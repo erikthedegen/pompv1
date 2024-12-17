@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Manual Coin Grid Creator</title>
+<style>
+body {
+  font-family: sans-serif;
+  margin: 20px;
+}
+
+h1 {
+  text-align: center;
+}
+
+.controls {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.controls button {
+  margin: 0 10px;
+  padding: 10px 15px;
+}
+
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(2, 256px);
+  grid-template-rows: repeat(4, 128px);
+  gap: 0px;
+  margin: 0 auto;
+  border: 1px solid #ccc;
+}
+
+.coin-box {
+  border: 1px solid #ccc;
+  position: relative;
+  cursor: pointer;
+  background: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.coin-box.filled {
+  cursor: default;
+}
+
+.coin-box-content {
+  text-align: center;
+  font-size: 14px;
+}
+
+.coin-box-content img {
+  max-width: 50px;
+  max-height: 50px;
+  display: block;
+  margin: 5px auto;
+}
+
+.coin-box.editable .delete-icon {
+  display: block;
+}
+
+.delete-icon {
+  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: red;
+  color: white;
+  font-weight: bold;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.modal {
+  display: none; 
+  position: fixed; 
+  z-index: 999; 
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  overflow: auto; 
+  background-color: rgba(0,0,0,0.4);
+}
+
+.modal-content {
+  background: #fff;
+  margin: 10% auto;
+  padding: 20px;
+  width: 300px;
+  position: relative;
+}
+
+.close-btn {
+  position: absolute;
+  top: 5px; right: 10px;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.modal-content form label {
+  display: block;
+  margin: 10px 0;
+}
+
+.modal-content form input, .modal-content form textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.raw-data-toggle {
+  margin: 10px 0;
+  text-align: right;
+}
+
+.raw-data-area {
+  display: none;
+  margin-top: 10px;
+}
+</style>
+</head>
+<body>
+<h1>Manual Coin Grid Creator</h1>
+<div class="controls">
+    <button id="editModeBtn">Toggle Edit Mode</button>
+    <button id="resetBtn">Reset</button>
+    <button id="saveBtn">Download PNG</button>
+</div>
+
+<div class="grid-container" id="coinGrid">
+    <div class="coin-box" data-index="0"></div>
+    <div class="coin-box" data-index="1"></div>
+    <div class="coin-box" data-index="2"></div>
+    <div class="coin-box" data-index="3"></div>
+    <div class="coin-box" data-index="4"></div>
+    <div class="coin-box" data-index="5"></div>
+    <div class="coin-box" data-index="6"></div>
+    <div class="coin-box" data-index="7"></div>
+</div>
+
+<div id="modal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn">&times;</span>
+        <h3>Enter Coin Data</h3>
+        <form id="coinForm">
+            <label>
+                Name:
+                <input type="text" name="name" required/>
+            </label>
+            <label>
+                Ticker:
+                <input type="text" name="ticker"/>
+            </label>
+            <label>
+                Description:
+                <textarea name="description"></textarea>
+            </label>
+            <label>
+                Image URL:
+                <input type="url" name="imageUrl" placeholder="https://example.com/image.png"/>
+            </label>
+            <div class="raw-data-toggle">
+                <button type="button" id="useRawDataBtn">Use Raw Data</button>
+            </div>
+            <div class="raw-data-area" id="rawDataArea">
+                <textarea id="rawDataInput" placeholder="Paste raw JSON chunk here"></textarea>
+                <button type="button" id="parseRawBtn">Parse & Fill</button>
+            </div>
+            <button type="submit">Save</button>
+        </form>
+    </div>
+</div>
+
+<script>
+const boxes = document.querySelectorAll(".coin-box");
+const modal = document.getElementById("modal");
+const closeBtn = modal.querySelector(".close-btn");
+const form = document.getElementById("coinForm");
+const saveBtn = document.getElementById("saveBtn");
+const resetBtn = document.getElementById("resetBtn");
+const editModeBtn = document.getElementById("editModeBtn");
+const useRawDataBtn = document.getElementById("useRawDataBtn");
+const rawDataArea = document.getElementById("rawDataArea");
+const rawDataInput = document.getElementById("rawDataInput");
+const parseRawBtn = document.getElementById("parseRawBtn");
+
+let editMode = false;
+let currentIndex = null;
+
+let coinData = Array(8).fill(null);
+
+boxes.forEach(box => {
+    box.addEventListener("click", () => {
+        if (editMode && box.classList.contains("filled")) {
+            return;
+        }
+        currentIndex = parseInt(box.getAttribute("data-index"));
+        const existing = coinData[currentIndex];
+        form.name.value = existing ? existing.metadata_name : "";
+        form.ticker.value = existing ? existing.metadata_symbol : "";
+        form.description.value = existing ? existing.metadata_description : "";
+        form.imageUrl.value = existing ? existing.metadata_image_official : "";
+        rawDataArea.style.display = "none";
+        rawDataInput.value = "";
+        openModal();
+    });
+});
+
+function openModal() {
+    modal.style.display = "block";
+}
+
+function closeModal() {
+    modal.style.display = "none";
+    currentIndex = null;
+}
+
+closeBtn.onclick = closeModal;
+
+window.onclick = (e) => {
+    if (e.target == modal) closeModal();
+};
+
+form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = form.name.value.trim();
+    const ticker = form.ticker.value.trim();
+    const description = form.description.value.trim();
+    const imageUrl = form.imageUrl.value.trim();
+
+    coinData[currentIndex] = {
+        metadata_name: name,
+        metadata_symbol: ticker,
+        metadata_description: description,
+        metadata_image_official: imageUrl
+    };
+    updateBox(currentIndex);
+    closeModal();
+});
+
+function updateBox(index) {
+    const box = boxes[index];
+    const data = coinData[index];
+    box.innerHTML = "";
+    if (data && (data.metadata_name || data.metadata_image_official)) {
+        box.classList.add("filled");
+        box.classList.remove("editable");
+        const content = document.createElement("div");
+        content.className = "coin-box-content";
+        content.innerHTML = `
+            <div><strong>${data.metadata_name || "(No Name)"}</strong></div>
+            ${data.metadata_symbol ? `<div>${data.metadata_symbol}</div>` : ""}
+            ${data.metadata_image_official ? `<img src="${data.metadata_image_official}" alt="coin image"/>` : ""}
+        `;
+        box.appendChild(content);
+        if (editMode) {
+            addDeleteIcon(box, index);
+            box.classList.add("editable");
+        }
+    } else {
+        box.classList.remove("filled");
+        box.classList.remove("editable");
+        box.innerHTML = "";
+        if (editMode) {
+            addDeleteIcon(box, index);
+            box.classList.add("editable");
+        }
+    }
+}
+
+function addDeleteIcon(box, index) {
+    let del = document.createElement("div");
+    del.className = "delete-icon";
+    del.textContent = "X";
+    del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        coinData[index] = null;
+        updateBox(index);
+    });
+    box.appendChild(del);
+}
+
+editModeBtn.addEventListener("click", () => {
+    editMode = !editMode;
+    boxes.forEach((box, i) => {
+        if (coinData[i]) {
+            if (editMode) {
+                box.classList.add("editable");
+                addDeleteIcon(box, i);
+            } else {
+                const del = box.querySelector(".delete-icon");
+                if (del) del.remove();
+                box.classList.remove("editable");
+            }
+        } else {
+            if (editMode) {
+                box.classList.add("editable");
+                addDeleteIcon(box, i);
+            } else {
+                box.classList.remove("editable");
+                const del = box.querySelector(".delete-icon");
+                if (del) del.remove();
+            }
+        }
+    });
+});
+
+resetBtn.addEventListener("click", () => {
+    coinData = Array(8).fill(null);
+    boxes.forEach((box,i) => updateBox(i));
+});
+
+saveBtn.addEventListener("click", () => {
+    fetch("/generate", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({coins: coinData.map(c => c || {
+            metadata_name: "",
+            metadata_symbol: "",
+            metadata_description: "",
+            metadata_image_official: ""
+        })})
+    }).then(response => response.blob())
+      .then(blob => {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "coins_bundle.png";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+      });
+});
+
+useRawDataBtn.addEventListener("click", () => {
+    if (rawDataArea.style.display === "none") {
+        rawDataArea.style.display = "block";
+    } else {
+        rawDataArea.style.display = "none";
+    }
+});
+
+parseRawBtn.addEventListener("click", () => {
+    const raw = rawDataInput.value.trim();
+    if (!raw) return;
+    // Attempt to extract JSON from the chunk
+    // The chunk may have logs, so try to find the JSON block by finding '{' and '}'.
+    let start = raw.indexOf('{');
+    let end = raw.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+        const jsonString = raw.substring(start, end+1);
+        try {
+            const data = JSON.parse(jsonString);
+            // Extract fields
+            form.name.value = data.metadata_name || "";
+            form.ticker.value = data.metadata_symbol || "";
+            form.description.value = data.metadata_description || "";
+            form.imageUrl.value = data.metadata_image_official || "";
+            alert("Raw data parsed and fields updated.");
+        } catch (e) {
+            alert("Failed to parse JSON from raw data. Please check the format.");
+        }
+    } else {
+        alert("No valid JSON found in the chunk.");
+    }
+});
+</script>
+</body>
+</html>
