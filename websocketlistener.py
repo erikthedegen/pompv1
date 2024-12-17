@@ -88,23 +88,16 @@ def load_font(font_path, size):
         logging.warning(f"Font file '{font_path}' not found. Using default font.")
     return ImageFont.load_default()
 
-# Load fonts once to reuse
 NAME_FONT_DEFAULT = load_font(FONT_PATH, NAME_START_FONT_SIZE)
 DESC_FONT_DEFAULT = load_font(FONT_PATH, DESC_START_FONT_SIZE)
 LABEL_FONT = load_font(FONT_PATH, LABEL_FONT_SIZE)
 
 def scale_image_keep_aspect(img, max_size):
-    """
-    Scale an image while maintaining its aspect ratio.
-    """
     w, h = img.size
     scale = min(max_size / w, max_size / h)
     return img.resize((int(w*scale), int(h*scale)), Resampling.LANCZOS)
 
 def text_size(draw, text, font):
-    """
-    Calculate the width and height of the given text using the specified font.
-    """
     if not text:
         return 0, 0
     bbox = draw.textbbox((0, 0), text, font=font)
@@ -113,9 +106,6 @@ def text_size(draw, text, font):
     return width, height
 
 def fit_single_line(draw, text, max_width, max_height, start_font_size=16, min_font_size=6):
-    """
-    Fit text into a single line by adjusting font size or truncating with ellipsis.
-    """
     ellipsis = "…"
     for fs in range(start_font_size, min_font_size - 1, -1):
         font = load_font(FONT_PATH, fs)
@@ -130,14 +120,10 @@ def fit_single_line(draw, text, max_width, max_height, start_font_size=16, min_f
                     line = line[:-1]
                 if line:
                     return line + ellipsis, font
-    # If all else fails, return ellipsis
     font = load_font(FONT_PATH, min_font_size)
     return ellipsis, font
 
 def force_wrap_text(draw, text, font, max_width):
-    """
-    Wrap text to fit within max_width by breaking words if necessary.
-    """
     if not text:
         return []
     lines = []
@@ -163,7 +149,6 @@ def force_wrap_text(draw, text, font, max_width):
 
     for w in words:
         if line_width(w) > max_width:
-            # Break long word
             parts = break_long_word(w)
             for part in parts:
                 test_line = (current_line + " " + part).strip() if current_line else part
@@ -184,9 +169,6 @@ def force_wrap_text(draw, text, font, max_width):
     return lines
 
 def fit_description(draw, text, max_width, max_height, start_font_size=14, min_font_size=6):
-    """
-    Fit full description into the given area by adjusting font size. Returns wrapped lines and font.
-    """
     for fs in range(start_font_size, min_font_size - 1, -1):
         font = load_font(FONT_PATH, fs)
         wrapped_lines = force_wrap_text(draw, text, font, max_width)
@@ -225,7 +207,6 @@ def save_bundle_to_db(coins):
                 "mint": coin.get("mint", ""),
                 "pumpfun_url": coin.get("pumpfun_url", ""),
                 "metadata_image_official": coin.get("metadata_image_official", ""),
-                # New fields added here
                 "metadata_name": coin.get("metadata_name", ""),
                 "metadata_symbol": coin.get("metadata_symbol", ""),
                 "metadata_description": coin.get("metadata_description", "")
@@ -248,13 +229,7 @@ def save_bundle_to_db(coins):
 # ===========================
 
 def draw_coin_box(draw, main_image, x, y, coin_data, index):
-    """
-    Draw a single coin's information box onto the main image.
-    """
-    # Draw main border (white outline)
     draw.rectangle([x, y, x + BOX_WIDTH - 1, y + BOX_HEIGHT - 1], fill="white", outline="white", width=1)
-
-    # Draw inner border (red outline)
     draw.rectangle([x + 2, y + 2, x + BOX_WIDTH - 3, y + BOX_HEIGHT - 3], outline="red", width=1)
 
     margin = 5
@@ -263,7 +238,6 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     safe_w = BOX_WIDTH - 2 * margin
     safe_h = BOX_HEIGHT - 2 * margin
 
-    # Place image on left
     image_size = 100
     coin_img = None
     coin_img_url = coin_data.get("metadata_image_official", "")
@@ -279,23 +253,21 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
                 logging.warning(f"Failed to fetch image for coin {index + 1}: Status Code {resp.status_code}")
         except Exception as e:
             logging.error(f"Error fetching coin image for coin {index + 1}: {e}")
+    else:
+        logging.warning(f"No image available for coin {index + 1}")
 
     img_w = img_h = 0
     if coin_img:
         img_w, img_h = coin_img.size
         img_y = safe_y + (safe_h - img_h) // 2
         main_image.paste(coin_img, (safe_x, img_y), coin_img)
-    else:
-        logging.warning(f"No image available for coin {index + 1}")
 
-    # Adjust positions after image
     vertical_offset = 10
     text_start_x = safe_x + img_w + 8
     right_margin = 5
     top_line_height = LABEL_BOX_SIZE
 
     label_id_text = f"{index + 1:02d}"
-
     label_x = text_start_x
     label_y = safe_y + vertical_offset
 
@@ -306,7 +278,6 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     lty = label_y + (LABEL_BOX_SIZE - lh) // 2 - 4
     draw.text((ltx, lty), label_id_text, fill="red", font=LABEL_FONT)
 
-    # Name line area
     name_area_x = label_x + LABEL_BOX_SIZE + 5
     name_area_w = (safe_x + safe_w - right_margin) - name_area_x
     name_area_h = LABEL_BOX_SIZE
@@ -314,11 +285,9 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     raw_name = (coin_data.get("metadata_name") or "").strip() or "(No Name)"
     symbol = (coin_data.get("metadata_symbol") or "").strip()
 
-    # Separate name and ticker
     name_line_text = raw_name
     ticker_line_text = f"({symbol})" if symbol else ""
 
-    # Fit name line
     name_line, name_font = fit_single_line(
         draw, name_line_text, name_area_w, name_area_h,
         start_font_size=NAME_START_FONT_SIZE,
@@ -328,7 +297,6 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     name_line_y = label_y + (LABEL_BOX_SIZE - nh) // 2 - 13
     draw.text((name_area_x, name_line_y), name_line, fill="black", font=name_font)
 
-    # Fit ticker line if exists
     if ticker_line_text:
         ticker_line, ticker_font = fit_single_line(
             draw, ticker_line_text, name_area_w, name_area_h,
@@ -342,15 +310,12 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
         ticker_line_y = name_line_y
         th = 0
 
-    # Description area below ticker
     desc_y = ticker_line_y + (th if ticker_line_text else 0) + 5
     desc_x = text_start_x
     desc_w = (safe_x + safe_w - right_margin) - desc_x
     desc_h = (safe_y + safe_h) - desc_y
 
     desc = (coin_data.get("metadata_description") or "").strip()
-
-    # Cap description length to 60 chars
     if len(desc) > 60:
         desc = desc[:60] + "..."
 
@@ -361,7 +326,6 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
             min_font_size=DESC_MIN_FONT_SIZE
         )
         if desc_lines is None:
-            # Doesn't fit even at smallest font
             try:
                 small_font = load_font(FONT_PATH, MIN_FONT_SIZE)
             except Exception as e:
@@ -374,10 +338,13 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
                 draw.text((desc_x, desc_y), dl, fill="black", font=desc_font)
                 desc_y += th + LINE_SPACING
 
-def create_image_for_coins(coins):
+def create_image_for_coins(coins, bundle_id):
     """
-    Create the main image containing all coin boxes and save data to Supabase.
+    Create the main image containing all coin boxes and save it with filename as the bundle_id.
     """
+    # Ensure the directory exists
+    os.makedirs("bundleimagesmain", exist_ok=True)
+
     main_image = Image.new('RGBA', (IMG_WIDTH, IMG_HEIGHT), (255, 255, 255, 255))
     draw = ImageDraw.Draw(main_image)
     for i, coin in enumerate(coins):
@@ -387,23 +354,13 @@ def create_image_for_coins(coins):
         y = row * BOX_HEIGHT
         draw_coin_box(draw, main_image, x, y, coin, i)
 
-    # Save the image
-    timestamp = int(time.time())
-    filename = f"coins_bundle_{timestamp}.png"
+    # Use bundle_id as the filename and place it in the "bundleimagesmain" directory
+    filename = os.path.join("bundleimagesmain", f"{bundle_id}.png")
     main_image.save(filename, "PNG")
     logging.info(f"Saved image: {filename}")
 
-    # Save bundle and coins to the database
-    bundle_id = save_bundle_to_db(coins)
-    if bundle_id:
-        logging.info(f"Bundle {bundle_id} saved to database successfully.")
-    else:
-        logging.error("Failed to save bundle to database.")
 
 def on_message(ws, message):
-    """
-    Callback function when a message is received from the WebSocket.
-    """
     global coins_buffer
     try:
         data = json.loads(message)
@@ -456,7 +413,13 @@ def on_message(ws, message):
         coins_buffer.append(data)
 
         if len(coins_buffer) == TOTAL_COINS:
-            create_image_for_coins(coins_buffer)
+            # First save to DB to get the bundle_id
+            bundle_id = save_bundle_to_db(coins_buffer)
+            if bundle_id:
+                # Now create the image with the bundle_id as filename
+                create_image_for_coins(coins_buffer, bundle_id)
+            else:
+                logging.error("No bundle_id retrieved; image not saved.")
             coins_buffer.clear()
 
     except json.JSONDecodeError:
@@ -465,23 +428,14 @@ def on_message(ws, message):
         logging.error(f"Error processing message: {e}")
 
 def on_error(ws, error):
-    """
-    Callback function when an error occurs with the WebSocket.
-    """
     logging.error(f"WebSocket Error: {error}")
 
 def on_close(ws, close_status_code, close_msg):
-    """
-    Callback function when the WebSocket connection is closed.
-    """
     logging.warning(f"WebSocket Closed. Code: {close_status_code}, Msg: {close_msg}. Reconnecting in 5 seconds...")
     time.sleep(5)
     connect_websocket()
 
 def on_open(ws):
-    """
-    Callback function when the WebSocket connection is opened.
-    """
     logging.info("WebSocket Opened. Subscribing to 'subscribeNewToken' events...")
     try:
         payload = {"method": "subscribeNewToken"}
@@ -491,9 +445,6 @@ def on_open(ws):
         logging.error(f"Error during subscription: {e}")
 
 def connect_websocket():
-    """
-    Establish a WebSocket connection and assign callback functions.
-    """
     logging.info("Connecting to WebSocket...")
     ws = websocket.WebSocketApp(
         API_URL,
@@ -504,13 +455,7 @@ def connect_websocket():
     )
     ws.run_forever()
 
-# ===========================
-# Entry Point
-# ===========================
-
 if __name__ == "__main__":
-    # Verify that the font file exists
     if not os.path.isfile(FONT_PATH):
         logging.warning(f"Font file '{FONT_PATH}' not found. Using default font.")
-
     connect_websocket()
