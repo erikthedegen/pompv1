@@ -1,0 +1,61 @@
+# Ignore virtual environment
+venv/
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables file
+.env
+
+# Log files
+*.log
+*.out
+*.err
+
+# Compiled files and build artifacts
+build/
+dist/
+*.egg-info/
+
+# Fonts or binaries (optional, if not critical)
+*.ttf
+*.otf
+*.woff
+*.woff2
+
+# IDE and editor configurations
+.vscode/
+.idea/
+*.iml
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Pip environment files
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Ignore coverage reports
+.coverage
+.coverage.*
+htmlcov/
+cov.xml
+
+# Pytest cache
+.pytest_cache/
+
+# Ignore temp and generated files
+*.tmp
+*.temp
+*.bak
+
+# Ignore any local backups
+*.swp
+*.swo
+*.bak
+*.orig
