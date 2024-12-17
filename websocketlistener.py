@@ -38,11 +38,9 @@ NAME_START_FONT_SIZE = 16
 NAME_MIN_FONT_SIZE = 6
 DESC_START_FONT_SIZE = 14
 DESC_MIN_FONT_SIZE = 6
-LABEL_BOX_SIZE = 22  # Decreased from 23 to 22 to make it 1 pixel smaller
-LINE_SPACING = 2  # Fixed line spacing for description
-
-# Updated LABEL_FONT_SIZE for increased font in label boxes
-LABEL_FONT_SIZE = 14  # Increased by 2pt from default
+LABEL_BOX_SIZE = 22
+LINE_SPACING = 2
+LABEL_FONT_SIZE = 14
 
 # Logging Configuration
 logging.basicConfig(
@@ -93,8 +91,6 @@ def load_font(font_path, size):
 # Load fonts once to reuse
 NAME_FONT_DEFAULT = load_font(FONT_PATH, NAME_START_FONT_SIZE)
 DESC_FONT_DEFAULT = load_font(FONT_PATH, DESC_START_FONT_SIZE)
-
-# Updated LABEL_FONT to use the increased LABEL_FONT_SIZE
 LABEL_FONT = load_font(FONT_PATH, LABEL_FONT_SIZE)
 
 def scale_image_keep_aspect(img, max_size):
@@ -126,7 +122,6 @@ def fit_single_line(draw, text, max_width, max_height, start_font_size=16, min_f
         tw, th = text_size(draw, text, font)
         if th <= max_height:
             if tw <= max_width:
-                logging.debug(f"fit_single_line: Using font size {fs} for text '{text}'")
                 return text, font
             else:
                 # Truncate with ellipsis
@@ -134,11 +129,9 @@ def fit_single_line(draw, text, max_width, max_height, start_font_size=16, min_f
                 while line and text_size(draw, line + ellipsis, font)[0] > max_width:
                     line = line[:-1]
                 if line:
-                    logging.debug(f"fit_single_line: Truncated text to '{line + ellipsis}' with font size {fs}")
                     return line + ellipsis, font
     # If all else fails, return ellipsis
     font = load_font(FONT_PATH, min_font_size)
-    logging.debug(f"fit_single_line: Using ellipsis with font size {min_font_size}")
     return ellipsis, font
 
 def force_wrap_text(draw, text, font, max_width):
@@ -199,10 +192,7 @@ def fit_description(draw, text, max_width, max_height, start_font_size=14, min_f
         wrapped_lines = force_wrap_text(draw, text, font, max_width)
         total_h = sum(text_size(draw, line, font)[1] for line in wrapped_lines) + LINE_SPACING * (len(wrapped_lines) - 1)
         if total_h <= max_height:
-            logging.debug(f"fit_description: Using font size {fs} for description.")
             return wrapped_lines, font
-    # If it doesn't fit even at min font size
-    logging.debug("fit_description: Description too long to fit.")
     return None, None
 
 # ===========================
@@ -217,11 +207,7 @@ def save_bundle_to_db(coins):
     try:
         # Insert a new bundle
         bundle_response = supabase.table('bundles').insert({}).execute()
-        
-        # Debugging: Log the entire response object
-        logging.debug(f"Bundle Insert Response: {bundle_response}")
 
-        # Check if data is present
         if not bundle_response.data:
             logging.error(f"Failed to insert bundle: {bundle_response}")
             return None
@@ -238,12 +224,13 @@ def save_bundle_to_db(coins):
                 "coin_id": coin_id,
                 "mint": coin.get("mint", ""),
                 "pumpfun_url": coin.get("pumpfun_url", ""),
-                "metadata_image_official": coin.get("metadata_image_official", "")
+                "metadata_image_official": coin.get("metadata_image_official", ""),
+                # New fields added here
+                "metadata_name": coin.get("metadata_name", ""),
+                "metadata_symbol": coin.get("metadata_symbol", ""),
+                "metadata_description": coin.get("metadata_description", "")
             }
             coin_response = supabase.table('coins').insert(coin_data).execute()
-            
-            # Debugging: Log the entire coin response
-            logging.debug(f"Coin {coin_id} Insert Response: {coin_response}")
 
             if not coin_response.data:
                 logging.error(f"Failed to insert coin {coin_id}: {coin_response}")
@@ -312,20 +299,17 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     label_x = text_start_x
     label_y = safe_y + vertical_offset
 
-    # Draw label box with original border width (unchanged)
-    draw.rectangle([label_x, label_y, label_x + LABEL_BOX_SIZE - 1, label_y + LABEL_BOX_SIZE - 1], fill="white", outline="red", width=1)  # Border width remains 1
-
+    draw.rectangle([label_x, label_y, label_x + LABEL_BOX_SIZE - 1, label_y + LABEL_BOX_SIZE - 1],
+                   fill="white", outline="red", width=1)
     lw, lh = text_size(draw, label_id_text, LABEL_FONT)
     ltx = label_x + (LABEL_BOX_SIZE - lw) // 2
-    lty = label_y + (LABEL_BOX_SIZE - lh) // 2 - 4  # Moved text up by 4 pixels (from -5 to -4)
+    lty = label_y + (LABEL_BOX_SIZE - lh) // 2 - 4
     draw.text((ltx, lty), label_id_text, fill="red", font=LABEL_FONT)
-
-    # ======= Updated Section Starts Here =======
 
     # Name line area
     name_area_x = label_x + LABEL_BOX_SIZE + 5
     name_area_w = (safe_x + safe_w - right_margin) - name_area_x
-    name_area_h = LABEL_BOX_SIZE  # Height allocated for name line
+    name_area_h = LABEL_BOX_SIZE
 
     raw_name = (coin_data.get("metadata_name") or "").strip() or "(No Name)"
     symbol = (coin_data.get("metadata_symbol") or "").strip()
@@ -334,21 +318,17 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     name_line_text = raw_name
     ticker_line_text = f"({symbol})" if symbol else ""
 
-    # Fit name line in single line
+    # Fit name line
     name_line, name_font = fit_single_line(
         draw, name_line_text, name_area_w, name_area_h,
         start_font_size=NAME_START_FONT_SIZE,
         min_font_size=NAME_MIN_FONT_SIZE
     )
     nw, nh = text_size(draw, name_line, name_font)
-
-    # Move the name area back down by 2 pixels
-    name_line_y = label_y + (LABEL_BOX_SIZE - nh) // 2 - 13  # Previously -15, now -13
+    name_line_y = label_y + (LABEL_BOX_SIZE - nh) // 2 - 13
     draw.text((name_area_x, name_line_y), name_line, fill="black", font=name_font)
 
-    # Fit ticker line in single line
-    ticker_line = ""
-    ticker_font = None
+    # Fit ticker line if exists
     if ticker_line_text:
         ticker_line, ticker_font = fit_single_line(
             draw, ticker_line_text, name_area_w, name_area_h,
@@ -356,13 +336,14 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
             min_font_size=NAME_MIN_FONT_SIZE
         )
         tw, th = text_size(draw, ticker_line, ticker_font)
-        ticker_line_y = name_line_y + nh + 3  # Shift down by 3 pixels from name line (moved up by 2 pixels)
+        ticker_line_y = name_line_y + nh + 3
         draw.text((name_area_x, ticker_line_y), ticker_line, fill="black", font=ticker_font)
     else:
-        ticker_line_y = name_line_y  # If no ticker, description starts right after name
+        ticker_line_y = name_line_y
+        th = 0
 
-    # Description area below ticker line
-    desc_y = ticker_line_y + (th if ticker_line_text else 0) + 5  # Additional 5 pixels below ticker
+    # Description area below ticker
+    desc_y = ticker_line_y + (th if ticker_line_text else 0) + 5
     desc_x = text_start_x
     desc_w = (safe_x + safe_w - right_margin) - desc_x
     desc_h = (safe_y + safe_h) - desc_y
@@ -392,9 +373,6 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
                 tw, th = text_size(draw, dl, desc_font)
                 draw.text((desc_x, desc_y), dl, fill="black", font=desc_font)
                 desc_y += th + LINE_SPACING
-    # else no description
-
-    # ======= Updated Section Ends Here =======
 
 def create_image_for_coins(coins):
     """
