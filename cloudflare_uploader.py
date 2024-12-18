@@ -1,14 +1,13 @@
 import os
 import logging
 
-CLOUDFLARE_BUCKET = os.getenv("CLOUDFLARE_BUCKET")
-CLOUDFLARE_ENDPOINT = os.getenv("CLOUDFLARE_ENDPOINT")
-CLOUDFLARE_ACCESS_KEY = os.getenv("CLOUDFLARE_ACCESS_KEY")
-CLOUDFLARE_SECRET_KEY = os.getenv("CLOUDFLARE_SECRET_KEY")
-
 def upload_to_cloudflare(file_path, file_name):
-    # If the bucket is public and you have a different method, adjust accordingly.
-    # For s3-compatible upload, need keys
+    # Re-fetch environment variables here to ensure they are loaded after load_dotenv()
+    CLOUDFLARE_BUCKET = os.getenv("CLOUDFLARE_BUCKET")
+    CLOUDFLARE_ENDPOINT = os.getenv("CLOUDFLARE_ENDPOINT")
+    CLOUDFLARE_ACCESS_KEY = os.getenv("CLOUDFLARE_ACCESS_KEY")
+    CLOUDFLARE_SECRET_KEY = os.getenv("CLOUDFLARE_SECRET_KEY")
+
     if not all([CLOUDFLARE_BUCKET, CLOUDFLARE_ENDPOINT, CLOUDFLARE_ACCESS_KEY, CLOUDFLARE_SECRET_KEY]):
         logging.warning("Cloudflare credentials or bucket/endpoint missing. Skipping upload.")
         return None
