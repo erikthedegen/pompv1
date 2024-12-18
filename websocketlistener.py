@@ -26,11 +26,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     logging.error("Supabase URL or Key not found.")
     exit(1)
 
-try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as e:
-    logging.error(f"Failed to create Supabase client: {e}", exc_info=True)
-    exit(1)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 API_URL = os.getenv("API_URL", "wss://pumpportal.fun/api/data")
 
@@ -43,9 +39,6 @@ BOX_WIDTH = IMG_WIDTH // GRID_COLS
 BOX_HEIGHT = IMG_HEIGHT // GRID_ROWS
 
 FONT_PATH = os.getenv("FONT_PATH", "notosans.ttf")
-if not os.path.isfile(FONT_PATH):
-    logging.warning(f"Font file '{FONT_PATH}' not found. Using default font.")
-
 DEFAULT_FONT_SIZE = 14
 MIN_FONT_SIZE = 6
 NAME_START_FONT_SIZE = 16
@@ -63,7 +56,7 @@ def load_font(font_path, size):
         try:
             return ImageFont.truetype(font_path, size)
         except Exception as e:
-            logging.error(f"Failed to load font '{font_path}' with size {size}: {e}", exc_info=True)
+            logging.error(f"Failed to load font '{font_path}' with size {size}: {e}")
     else:
         logging.warning(f"Font file '{font_path}' not found. Using default font.")
     return ImageFont.load_default()
@@ -189,9 +182,9 @@ def scale_image_keep_aspect(img, max_size):
     return img.resize((int(w*scale), int(h*scale)), Resampling.LANCZOS)
 
 def draw_coin_box(draw, main_image, x, y, coin_data, index):
-    # This function draws the coin box with metadata on the main image
     draw.rectangle([x,y,x+BOX_WIDTH-1,y+BOX_HEIGHT-1], fill="white", outline="white", width=1)
     draw.rectangle([x+2,y+2,x+BOX_WIDTH-3,y+BOX_HEIGHT-3], outline="red", width=1)
+
     margin = 5
     safe_x = x+margin
     safe_y = y+margin
@@ -215,8 +208,7 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     else:
         logging.warning(f"No image available for coin {index+1}")
 
-    draw_obj = draw
-    img_w,img_h = 0,0
+    img_w, img_h = 0,0
     if coin_img:
         img_w,img_h = coin_img.size
         img_y = safe_y+(safe_h - img_h)//2
@@ -230,12 +222,12 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     label_x = text_start_x
     label_y = safe_y + vertical_offset
 
-    draw_obj.rectangle([label_x,label_y,label_x+LABEL_BOX_SIZE-1,label_y+LABEL_BOX_SIZE-1],
+    draw.rectangle([label_x,label_y,label_x+LABEL_BOX_SIZE-1,label_y+LABEL_BOX_SIZE-1],
                    fill="white", outline="red", width=1)
-    lw,lh = text_size(draw_obj, label_id_text, LABEL_FONT)
+    lw,lh = text_size(draw, label_id_text, LABEL_FONT)
     ltx = label_x+(LABEL_BOX_SIZE - lw)//2
     lty = label_y+(LABEL_BOX_SIZE - lh)//2 -4
-    draw_obj.text((ltx,lty), label_id_text, fill="red", font=LABEL_FONT)
+    draw.text((ltx,lty), label_id_text, fill="red", font=LABEL_FONT)
 
     name_area_x = label_x + LABEL_BOX_SIZE + 5
     name_area_w = (safe_x+safe_w - right_margin)-name_area_x
@@ -246,20 +238,20 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     name_line_text = raw_name
     ticker_line_text = f"({symbol})" if symbol else ""
 
-    name_line, name_font = fit_single_line(draw_obj,name_line_text,name_area_w,name_area_h,
+    name_line, name_font = fit_single_line(draw,name_line_text,name_area_w,name_area_h,
                                            start_font_size=NAME_START_FONT_SIZE,
                                            min_font_size=NAME_MIN_FONT_SIZE)
-    nw, nh = text_size(draw_obj, name_line, name_font)
+    nw, nh = text_size(draw, name_line, name_font)
     name_line_y = label_y+(LABEL_BOX_SIZE - nh)//2 -13
-    draw_obj.text((name_area_x,name_line_y), name_line, fill="black", font=name_font)
+    draw.text((name_area_x,name_line_y), name_line, fill="black", font=name_font)
 
     if ticker_line_text:
-        ticker_line, ticker_font = fit_single_line(draw_obj,ticker_line_text,name_area_w,name_area_h,
+        ticker_line, ticker_font = fit_single_line(draw,ticker_line_text,name_area_w,name_area_h,
                                                    start_font_size=NAME_START_FONT_SIZE,
                                                    min_font_size=NAME_MIN_FONT_SIZE)
-        tw,th = text_size(draw_obj, ticker_line, ticker_font)
+        tw,th = text_size(draw, ticker_line, ticker_font)
         ticker_line_y = name_line_y + nh + 3
-        draw_obj.text((name_area_x,ticker_line_y), ticker_line, fill="black", font=ticker_font)
+        draw.text((name_area_x,ticker_line_y), ticker_line, fill="black", font=ticker_font)
     else:
         ticker_line_y = name_line_y
         th=0
@@ -274,16 +266,16 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
         desc = desc[:60]+"..."
 
     if desc:
-        desc_lines, desc_font = fit_description(draw_obj,desc,desc_w,desc_h,
+        desc_lines, desc_font = fit_description(draw,desc,desc_w,desc_h,
                                                 start_font_size=DESC_START_FONT_SIZE,
                                                 min_font_size=DESC_MIN_FONT_SIZE)
         if desc_lines is None:
             small_font = load_font(FONT_PATH, MIN_FONT_SIZE)
-            draw_obj.text((desc_x,desc_y), "[Desc too long]", fill="black", font=small_font)
+            draw.text((desc_x,desc_y), "[Desc too long]", fill="black", font=small_font)
         else:
             for dl in desc_lines:
-                tw,th = text_size(draw_obj, dl, desc_font)
-                draw_obj.text((desc_x,desc_y), dl, fill="black", font=desc_font)
+                tw,th = text_size(draw, dl, desc_font)
+                draw.text((desc_x,desc_y), dl, fill="black", font=desc_font)
                 desc_y += th + LINE_SPACING
 
 def create_image_for_coins(coins, bundle_id):
@@ -350,16 +342,16 @@ def on_message(ws, message):
         coins_buffer.append(data)
 
         if len(coins_buffer)==TOTAL_COINS:
-            # We got a full bundle
             bundle_id = save_bundle_to_db(coins_buffer)
             if bundle_id:
                 filename = create_image_for_coins(coins_buffer, bundle_id)
                 uploaded_url = upload_to_cloudflare(filename, f"{bundle_id}.png")
                 if uploaded_url:
+                    # Use public URL from CLOUDFLARE_PUBLIC_URL for the final image_url
                     public_url = f"{os.getenv('CLOUDFLARE_PUBLIC_URL')}/{bundle_id}.png"
                     try:
                         supabase.table('bundles').update({"image_url": public_url}).eq("id", bundle_id).execute()
-                        logging.info(f"Updated bundle {bundle_id} with public image_url: {public_url}")
+                        logging.info(f"Updated bundle with public image_url: {public_url}")
                     except Exception as e:
                         logging.error(f"Failed updating bundle image_url: {e}", exc_info=True)
                 else:
@@ -402,4 +394,6 @@ def connect_websocket():
     ws.run_forever()
 
 if __name__=="__main__":
+    if not os.path.isfile(FONT_PATH):
+        logging.warning(f"Font file '{FONT_PATH}' not found. Using default font.")
     connect_websocket()

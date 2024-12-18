@@ -2,6 +2,7 @@ import os
 import logging
 
 def upload_to_cloudflare(file_path, file_name):
+    # Re-fetch environment variables here to ensure they are loaded after load_dotenv()
     CLOUDFLARE_BUCKET = os.getenv("CLOUDFLARE_BUCKET")
     CLOUDFLARE_ENDPOINT = os.getenv("CLOUDFLARE_ENDPOINT")
     CLOUDFLARE_ACCESS_KEY = os.getenv("CLOUDFLARE_ACCESS_KEY")
