@@ -2,14 +2,17 @@ import os
 import logging
 
 def upload_to_cloudflare(file_path, file_name):
-    # Re-fetch environment variables here to ensure they are loaded after load_dotenv()
+    """
+    Upload a file to Cloudflare R2 bucket using S3-compatible API.
+    Returns the URL if successful, else None.
+    """
     CLOUDFLARE_BUCKET = os.getenv("CLOUDFLARE_BUCKET")
     CLOUDFLARE_ENDPOINT = os.getenv("CLOUDFLARE_ENDPOINT")
     CLOUDFLARE_ACCESS_KEY = os.getenv("CLOUDFLARE_ACCESS_KEY")
     CLOUDFLARE_SECRET_KEY = os.getenv("CLOUDFLARE_SECRET_KEY")
 
     if not all([CLOUDFLARE_BUCKET, CLOUDFLARE_ENDPOINT, CLOUDFLARE_ACCESS_KEY, CLOUDFLARE_SECRET_KEY]):
-        logging.warning("Cloudflare credentials or bucket/endpoint missing. Skipping upload.")
+        logging.warning("Cloudflare R2 credentials or settings missing. Skipping upload.")
         return None
 
     try:
@@ -29,7 +32,7 @@ def upload_to_cloudflare(file_path, file_name):
                           aws_secret_access_key=CLOUDFLARE_SECRET_KEY)
         s3.upload_file(file_path, CLOUDFLARE_BUCKET, file_name)
         url = f"{CLOUDFLARE_ENDPOINT}/{CLOUDFLARE_BUCKET}/{file_name}"
-        logging.info(f"Uploaded {file_name} to Cloudflare R2: {url}")
+        logging.info(f"Uploaded {file_name} to Cloudflare: {url}")
         return url
     except Exception as e:
         logging.error(f"Error uploading to Cloudflare: {e}", exc_info=True)

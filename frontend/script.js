@@ -1,72 +1,80 @@
-const socket = io(); 
-const container = document.getElementById('canvas-container');
+(function() {
+    const socket = io();
+    const container = document.getElementById('canvas-container');
 
-const BOX_WIDTH = 256;
-const BOX_HEIGHT = 128;
+    const BOX_WIDTH = 256;
+    const BOX_HEIGHT = 128;
 
-let coinElements = {};
+    let coinElements = {};
 
-socket.on("clear_canvas", () => {
-    container.innerHTML = "";
-    coinElements = {};
-});
-
-socket.on("add_coin", (data) => {
-    const id = data.id;
-    const img = document.createElement('img');
-    img.classList.add('coin-img');
-    img.src = data.image;
-
-    const index = parseInt(id, 10) - 1;
-    const row = Math.floor(index / 2);
-    const col = index % 2;
-
-    img.style.left = (col * BOX_WIDTH) + "px";
-    img.style.top = (row * BOX_HEIGHT) + "px";
-
-    container.appendChild(img);
-    coinElements[id] = { imgElement: img, overlayElement: null };
-
-    requestAnimationFrame(() => {
-        img.style.opacity = "1";
+    socket.on("clear_canvas", () => {
+        container.innerHTML = "";
+        coinElements = {};
     });
-});
 
-socket.on("overlay_marks", (decisions) => {
-    decisions.forEach(d => {
-        const coin = coinElements[d.id];
-        if (!coin) return;
-        const overlay = document.createElement('img');
-        overlay.classList.add('overlay-mark');
-        overlay.src = d.decision === "yes" ? "greenmark.png" : "redcross.png";
+    socket.on("add_coin", (data) => {
+        const {id, image} = data;
+        const imgElem = document.createElement('img');
+        imgElem.classList.add('coin-img');
+        imgElem.src = image;
 
-        const index = parseInt(d.id, 10)-1;
-        const row = Math.floor(index / 2);
-        const col = index % 2;
-        overlay.style.left = (col * BOX_WIDTH + 5) + "px";
-        overlay.style.top = (row * BOX_HEIGHT + 5) + "px";
+        const idx = parseInt(id, 10) - 1;
+        const row = Math.floor(idx / 2);
+        const col = idx % 2;
 
-        container.appendChild(overlay);
-        coin.overlayElement = overlay;
+        imgElem.style.left = (col * BOX_WIDTH) + "px";
+        imgElem.style.top = (row * BOX_HEIGHT) + "px";
+
+        container.appendChild(imgElem);
+        coinElements[id] = { imgElement: imgElem, overlayElement: null };
+
         requestAnimationFrame(() => {
-            overlay.style.opacity = "1";
+            imgElem.style.opacity = "1";
         });
     });
-});
 
-socket.on("fade_out", () => {
-    const keys = Object.keys(coinElements);
-    let i = 0;
-    function fadeNext() {
-        if (i >= keys.length) return;
-        const k = keys[i];
-        const coin = coinElements[k];
-        coin.imgElement.style.opacity = "0";
-        if (coin.overlayElement) {
-            coin.overlayElement.style.opacity = "0";
+    socket.on("overlay_marks", (decisions) => {
+        // decisions is expected to be an array of {id: "01", decision: "yes"|"no"}
+        decisions.forEach(item => {
+            const coinId = item.id;
+            const coinData = coinElements[coinId];
+            if (!coinData) return;
+
+            const overlay = document.createElement('img');
+            overlay.classList.add('overlay-mark');
+            overlay.src = item.decision === "yes" ? "greenmark.png" : "redcross.png";
+
+            const idx = parseInt(coinId, 10) - 1;
+            const row = Math.floor(idx / 2);
+            const col = idx % 2;
+            overlay.style.left = (col * BOX_WIDTH + 5) + "px";
+            overlay.style.top = (row * BOX_HEIGHT + 5) + "px";
+
+            container.appendChild(overlay);
+            coinData.overlayElement = overlay;
+
+            requestAnimationFrame(() => {
+                overlay.style.opacity = "1";
+            });
+        });
+    });
+
+    socket.on("fade_out", () => {
+        const keys = Object.keys(coinElements);
+        let i = 0;
+        function fadeNext() {
+            if (i >= keys.length) return;
+            const currentKey = keys[i];
+            const coin = coinElements[currentKey];
+            if (coin && coin.imgElement) {
+                coin.imgElement.style.opacity = "0";
+            }
+            if (coin && coin.overlayElement) {
+                coin.overlayElement.style.opacity = "0";
+            }
+            i++;
+            setTimeout(fadeNext, 500);
         }
-        i++;
-        setTimeout(fadeNext, 500);
-    }
-    fadeNext();
-});
+        fadeNext();
+    });
+})();

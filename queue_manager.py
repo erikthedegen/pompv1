@@ -11,10 +11,10 @@ logging.basicConfig(level=logging.INFO)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-REDIS_URL = os.getenv("REDIS_URL","redis://localhost:6380/0")
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6380/0")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logging.error("SUPABASE_URL or SUPABASE_KEY not set.")
+    logging.error("Missing SUPABASE_URL or SUPABASE_KEY.")
     exit(1)
 
 try:
@@ -30,6 +30,10 @@ except Exception as e:
     exit(1)
 
 def enqueue_new_bundles():
+    """
+    Fetch unprocessed bundles from Supabase and enqueue them for processing.
+    Marks them as processed=true in the database once enqueued.
+    """
     try:
         response = supabase.table('bundles').select('*').eq('processed', False).execute()
         bundles = response.data
@@ -39,10 +43,7 @@ def enqueue_new_bundles():
         for b in bundles:
             image_url = b.get('image_url')
             if image_url:
-                item = {
-                    "bundle_id": b['id'],
-                    "image_url": image_url
-                }
+                item = {"bundle_id": b['id'], "image_url": image_url}
                 r.rpush("bundle_queue", json.dumps(item))
                 supabase.table('bundles').update({"processed": True}).eq("id", b['id']).execute()
                 logging.info(f"Enqueued bundle {b['id']}")
