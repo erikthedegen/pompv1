@@ -23,7 +23,10 @@
             position: absolute;
             width: 24px;
             height: 24px;
+            opacity: 0; /* Start invisible */
             transition: opacity 0.5s;
+            pointer-events: none; /* Allow clicks to pass through */
+            z-index: 9999; /* Ensure overlays are above coins */
         }
     </style>
 </head>

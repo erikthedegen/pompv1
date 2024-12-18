@@ -165,8 +165,9 @@ def process_next_bundle():
     # Emit overlay marks and fade out
     try:
         socketio.emit("overlay_marks", decisions)
-        time.sleep(1)
+        time.sleep(2)  # Changed from 1 second to 2 seconds
         socketio.emit("fade_out", {})
+
     except Exception as e:
         logging.error(f"Error overlaying marks/fading out for bundle {bundle_id}: {e}", exc_info=True)
 

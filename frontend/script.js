@@ -108,10 +108,13 @@ function startBundleDisplay(bundle) {
     let i = 0;
     (function fadeNext() {
         if (i >= coinIds.length) {
-            // Once all coins are visible, show overlay if any
-            applyOverlayMarks();
+            // Once all coins are visible, wait 1 second before showing overlays
+            setTimeout(() => {
+                applyOverlayMarks();
+            }, 1000);
             return;
         }
+        
         const cid = coinIds[i];
         const coin = coinElements[cid];
         if (coin) {
@@ -136,7 +139,8 @@ function applyOverlayMarks() {
         if (!coin) return;
         const overlay = document.createElement('img');
         overlay.classList.add('overlay-mark');
-        overlay.src = d.decision === "yes" ? "/static/greenmark.png" : "/static/redcross.png";
+        // Updated paths to overlay images
+        overlay.src = d.decision === "yes" ? "/images/greenmark.png" : "/images/redcross.png";
 
         const index = parseInt(d.id, 10)-1;
         const row = Math.floor(index / 2);
@@ -144,6 +148,8 @@ function applyOverlayMarks() {
         overlay.style.left = (col * BOX_WIDTH + 5) + "px";
         overlay.style.top = (row * BOX_HEIGHT + 5) + "px";
 
+        // Initially set opacity to 0 for transition
+        overlay.style.opacity = "0";
         container.appendChild(overlay);
         coin.overlayElement = overlay;
         requestAnimationFrame(() => {
