@@ -9,38 +9,36 @@ from PIL import Image
 from flask import Flask
 from flask_socketio import SocketIO
 from dotenv import load_dotenv
-from supabase import create_client, Client
 from openai_decider import get_decision
+from supabase import create_client, Client
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 
-# Environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6380/0")
+REDIS_URL = os.getenv("REDIS_URL","redis://localhost:6380/0")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logging.error("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
+    logging.error("SUPABASE_URL or SUPABASE_KEY not set.")
     exit(1)
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as err:
-    logging.error(f"Failed to create Supabase client: {err}", exc_info=True)
+except Exception as e:
+    logging.error("Failed to create Supabase client: %s", e, exc_info=True)
     exit(1)
 
 try:
     r = redis.from_url(REDIS_URL)
-except Exception as err:
-    logging.error(f"Failed to connect to Redis: {err}", exc_info=True)
+except Exception as e:
+    logging.error("Failed to connect to Redis: %s", e, exc_info=True)
     exit(1)
 
 app = Flask(__name__, static_url_path='/static', static_folder='frontend')
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Image and grid configuration
 IMG_WIDTH = 512
 IMG_HEIGHT = 512
 GRID_COLS = 2
@@ -51,18 +49,12 @@ BOX_HEIGHT = IMG_HEIGHT // GRID_ROWS
 current_bundle_id = None
 
 def process_next_bundle():
-    """
-    Process the next bundle from the Redis queue:
-    - Download bundle image
-    - Split into 8 coin images
-    - Send them to the frontend
-    - Fetch coin metadata, call OpenAI for decisions
-    - Overlay marks and trigger fade out
-    """
     global current_bundle_id
     item = r.lpop("bundle_queue")
     if not item:
+        time.sleep(5)  # no item, wait a bit
         return
+
     try:
         data = json.loads(item)
     except json.JSONDecodeError:
@@ -73,25 +65,25 @@ def process_next_bundle():
     image_url = data.get("image_url")
 
     if not bundle_id or not image_url:
-        logging.error("Bundle data missing required fields.")
+        logging.error("Bundle data missing bundle_id or image_url. Skipping item.")
         return
 
     current_bundle_id = bundle_id
     logging.info(f"Processing bundle {bundle_id}")
 
-    # Download the image
+    # Download image
     try:
         resp = requests.get(image_url, timeout=10)
         resp.raise_for_status()
         img = Image.open(BytesIO(resp.content)).convert("RGBA")
-    except requests.RequestException as req_err:
-        logging.error(f"Failed to download image for bundle {bundle_id}: {req_err}", exc_info=True)
+    except requests.RequestException as e:
+        logging.error(f"Failed to download image for bundle {bundle_id}: {e}", exc_info=True)
         return
-    except Exception as img_err:
-        logging.error(f"Error processing image for bundle {bundle_id}: {img_err}", exc_info=True)
+    except Exception as e:
+        logging.error(f"Error processing image for bundle {bundle_id}: {e}", exc_info=True)
         return
 
-    # Split into 8 coins
+    # Crop coins
     coins_data = []
     for i in range(8):
         row = i // GRID_COLS
@@ -99,36 +91,39 @@ def process_next_bundle():
         x = col * BOX_WIDTH
         y = row * BOX_HEIGHT
         try:
-            coin_img = img.crop((x, y, x + BOX_WIDTH, y + BOX_HEIGHT))
+            coin_img = img.crop((x,y,x+BOX_WIDTH,y+BOX_HEIGHT))
             buf = BytesIO()
-            coin_img.save(buf, format='PNG')
+            coin_img.save(buf,format='PNG')
             buf.seek(0)
-            coins_data.append({
+            coin_data = {
                 "id": f"{i+1:02d}",
                 "image_data": buf.read()
-            })
-        except Exception as crop_err:
-            logging.error(f"Error cropping coin {i+1} from bundle {bundle_id}: {crop_err}", exc_info=True)
+            }
+            coins_data.append(coin_data)
+        except Exception as e:
+            logging.error(f"Error cropping coin {i+1} from bundle {bundle_id}: {e}", exc_info=True)
             return
 
     # Send coins to frontend
     try:
         socketio.emit("clear_canvas", {})
         time.sleep(1)
-        for coin in coins_data:
-            import base64
-            encoded_img = base64.b64encode(coin["image_data"]).decode('utf-8')
-            socketio.emit("add_coin", {"id": coin["id"], "image": f"data:image/png;base64,{encoded_img}"})
+        import base64
+        for c in coins_data:
+            encoded = base64.b64encode(c["image_data"]).decode('utf-8')
+            socketio.emit("add_coin", {"id": c["id"], "image": f"data:image/png;base64,{encoded}"})
             time.sleep(0.5)
-    except Exception as frontend_err:
-        logging.error(f"Error sending coins to frontend: {frontend_err}", exc_info=True)
+    except Exception as e:
+        logging.error(f"Error sending coins to frontend: {e}", exc_info=True)
         return
 
-    # Fetch coin metadata from Supabase
+    # Fetch coin metadata
     try:
         res = supabase.table('coins').select("*").eq('bundle_id', bundle_id).execute()
-        coin_rows = res.data or []
-        coin_rows.sort(key=lambda c: c['coin_id'])
+        coin_rows = res.data
+        if not coin_rows or len(coin_rows) < 8:
+            logging.warning(f"Not all coin metadata available for bundle {bundle_id}.")
+        coin_rows.sort(key=lambda x: x['coin_id'])
         coin_info_list = []
         for c in coin_rows:
             coin_info_list.append({
@@ -137,40 +132,39 @@ def process_next_bundle():
                 "symbol": c.get('metadata_symbol', ''),
                 "description": c.get('metadata_description', '')
             })
-    except Exception as meta_err:
-        logging.error(f"Error fetching metadata for bundle {bundle_id}: {meta_err}", exc_info=True)
+    except Exception as e:
+        logging.error(f"Error fetching coin metadata for bundle {bundle_id}: {e}", exc_info=True)
         return
 
-    # Get decisions from OpenAI
+    # Get decision from OpenAI
     decisions = get_decision(bundle_id, image_url, coin_info_list)
     if decisions is None:
         logging.error(f"No valid OpenAI decisions for bundle {bundle_id}.")
         return
 
-    # Overlay decisions and fade out
+    # Overlay marks and fade out
     try:
         socketio.emit("overlay_marks", decisions)
         time.sleep(5)
         socketio.emit("fade_out", {})
-    except Exception as overlay_err:
-        logging.error(f"Error overlaying marks/fading out for bundle {bundle_id}: {overlay_err}", exc_info=True)
+    except Exception as e:
+        logging.error(f"Error overlaying marks/fading out for bundle {bundle_id}: {e}", exc_info=True)
 
     current_bundle_id = None
     logging.info(f"Completed processing for bundle {bundle_id}")
 
 @app.route('/')
 def index():
-    """Serve the frontend index.html file."""
     return app.send_static_file('index.html')
 
-def run_processor_loop():
-    """Continuously process bundles from the queue."""
+def run_processor():
+    logging.info("Starting bundle processor loop...")
     while True:
         process_next_bundle()
-        time.sleep(5)
 
 if __name__ == "__main__":
     import threading
-    thread = threading.Thread(target=run_processor_loop, daemon=True)
-    thread.start()
+    t = threading.Thread(target=run_processor, daemon=True)
+    t.start()
+    logging.info("Image processor service started, now running SocketIO server...")
     socketio.run(app, host="0.0.0.0", port=5000)
