@@ -11,6 +11,7 @@ from flask_socketio import SocketIO
 from dotenv import load_dotenv
 from openai_decider import get_decision
 from supabase import create_client, Client
+from cloudflare_uploader import upload_to_cloudflare
 
 load_dotenv()
 
@@ -103,7 +104,6 @@ def process_next_bundle():
             coin_path = os.path.join(bundle_dir, coin_file_name)
             coin_img.save(coin_path, format='PNG')
             logging.info(f"Cropped and saved coin {i+1} to {coin_path}")
-            # Note the /static prefix in the URL
             coins_data.append({
                 "id": f"{i+1:02d}",
                 "url": f"/static/coins/{bundle_id}/{coin_file_name}"
@@ -114,12 +114,8 @@ def process_next_bundle():
 
     try:
         socketio.emit("clear_canvas", {"bundle_id": bundle_id})
-        logging.info("Emitted clear_canvas to frontend.")
-        time.sleep(1)
         for c in coins_data:
             socketio.emit("add_coin", {"bundle_id": bundle_id, "id": c["id"], "url": c["url"]})
-            logging.info(f"Sent coin {c['id']} (URL: {c['url']}) to frontend.")
-            time.sleep(0.5)
     except Exception as e:
         logging.error(f"Error sending coins to frontend: {e}", exc_info=True)
         return
@@ -150,13 +146,27 @@ def process_next_bundle():
         logging.error(f"No valid OpenAI decisions for bundle {bundle_id}.")
         return
 
+    # For each "yes" decision, upload that coin image to Cloudflare and update chosenchunkurl
+    yes_coins = [d for d in decisions if d['decision'] == 'yes']
+    for yc in yes_coins:
+        coin_id = yc['id']
+        coin_filename = f"{coin_id}.png"
+        local_path = os.path.join(bundle_dir, coin_filename)
+        if os.path.isfile(local_path):
+            uploaded_url = upload_to_cloudflare(local_path, f"{bundle_id}-{coin_id}.png")
+            if uploaded_url:
+                # Update chosenchunkurl in supabase
+                try:
+                    supabase.table('coins').update({"chosenchunkurl": uploaded_url}).eq("bundle_id", bundle_id).eq("coin_id", coin_id).execute()
+                    logging.info(f"Updated chosenchunkurl for coin {coin_id} in bundle {bundle_id}")
+                except Exception as e:
+                    logging.error(f"Failed to update chosenchunkurl for bundle {bundle_id}, coin {coin_id}: {e}", exc_info=True)
+
     # Emit overlay marks and fade out
     try:
         socketio.emit("overlay_marks", decisions)
-        logging.info("Sent overlay_marks to frontend.")
-        time.sleep(5)
+        time.sleep(1)
         socketio.emit("fade_out", {})
-        logging.info("Sent fade_out to frontend.")
     except Exception as e:
         logging.error(f"Error overlaying marks/fading out for bundle {bundle_id}: {e}", exc_info=True)
 

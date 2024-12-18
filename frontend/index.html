@@ -1,14 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Coin Grid</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Popcoin Machine</title>
+    <!-- Tailwind CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css" rel="stylesheet">
     <style>
         #canvas-container {
             position: relative;
             width: 512px;
             height: 512px;
-            border: 1px solid #000;
             background: #fff;
+            overflow: hidden;
         }
         .coin-img {
             position: absolute;
@@ -23,11 +27,14 @@
         }
     </style>
 </head>
-<body>
-    <h1>Coin Grid</h1>
-    <div id="canvas-container"></div>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="text-center space-y-4">
+        <h1 class="text-4xl font-bold text-gray-800">Popcoin Machine</h1>
+        <div id="canvas-container" class="mx-auto border border-gray-300 rounded shadow-lg relative"></div>
+    </div>
+
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <!-- Note the /static prefix below to load script.js from the static folder -->
     <script src="/static/script.js"></script>
 </body>
 </html>
