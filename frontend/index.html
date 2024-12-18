@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Coin Grid</title>
+    <style>
+        #canvas-container {
+            position: relative;
+            width: 512px;
+            height: 512px;
+            border: 1px solid #000;
+            background: #fff;
+        }
+        .coin-img {
+            position: absolute;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .overlay-mark {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <h1>Coin Grid</h1>
+    <div id="canvas-container"></div>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
