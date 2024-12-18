@@ -52,7 +52,10 @@ def process_next_bundle():
     global current_bundle_id
     item = r.lpop("bundle_queue")
     if not item:
+        logging.info("No item found in bundle_queue.")
         return
+
+    logging.info(f"Pulled item from queue: {item}")
 
     try:
         data = json.loads(item)
@@ -62,24 +65,31 @@ def process_next_bundle():
 
     bundle_id = data.get("bundle_id")
     image_url = data.get("image_url")
+    logging.info(f"Starting process for bundle {bundle_id} with image_url {image_url}")
 
     if not bundle_id or not image_url:
         logging.error("Bundle data missing bundle_id or image_url.")
         return
 
     current_bundle_id = bundle_id
-    logging.info(f"Processing bundle {bundle_id}")
 
+    # Download image
+    logging.info("Downloading image...")
     try:
         resp = requests.get(image_url, timeout=10)
         resp.raise_for_status()
         img = Image.open(BytesIO(resp.content)).convert("RGBA")
+        logging.info("Image downloaded and opened successfully.")
     except requests.RequestException as e:
         logging.error(f"Failed to download image for bundle {bundle_id}: {e}", exc_info=True)
         return
     except Exception as e:
         logging.error(f"Error processing image for bundle {bundle_id}: {e}", exc_info=True)
         return
+
+    # Prepare directory for this bundle
+    bundle_dir = os.path.join(app.static_folder, "coins", bundle_id)
+    os.makedirs(bundle_dir, exist_ok=True)
 
     coins_data = []
     for i in range(8):
@@ -89,30 +99,32 @@ def process_next_bundle():
         y = row * BOX_HEIGHT
         try:
             coin_img = img.crop((x,y,x+BOX_WIDTH,y+BOX_HEIGHT))
-            buf = BytesIO()
-            coin_img.save(buf,format='PNG')
-            buf.seek(0)
-            coin_data = {
+            coin_file_name = f"{i+1:02d}.png"
+            coin_path = os.path.join(bundle_dir, coin_file_name)
+            coin_img.save(coin_path, format='PNG')
+            logging.info(f"Cropped and saved coin {i+1} to {coin_path}")
+            # Note the /static prefix in the URL
+            coins_data.append({
                 "id": f"{i+1:02d}",
-                "image_data": buf.read()
-            }
-            coins_data.append(coin_data)
+                "url": f"/static/coins/{bundle_id}/{coin_file_name}"
+            })
         except Exception as e:
             logging.error(f"Error cropping coin {i+1} from bundle {bundle_id}: {e}", exc_info=True)
             return
 
     try:
-        socketio.emit("clear_canvas", {})
+        socketio.emit("clear_canvas", {"bundle_id": bundle_id})
+        logging.info("Emitted clear_canvas to frontend.")
         time.sleep(1)
         for c in coins_data:
-            import base64
-            encoded = base64.b64encode(c["image_data"]).decode('utf-8')
-            socketio.emit("add_coin", {"id": c["id"], "image": f"data:image/png;base64,{encoded}"})
+            socketio.emit("add_coin", {"bundle_id": bundle_id, "id": c["id"], "url": c["url"]})
+            logging.info(f"Sent coin {c['id']} (URL: {c['url']}) to frontend.")
             time.sleep(0.5)
     except Exception as e:
         logging.error(f"Error sending coins to frontend: {e}", exc_info=True)
         return
 
+    # Fetch metadata from Supabase
     try:
         res = supabase.table('coins').select("*").eq('bundle_id', bundle_id).execute()
         coin_rows = res.data
@@ -125,21 +137,26 @@ def process_next_bundle():
                 "symbol": c.get('metadata_symbol', ''),
                 "description": c.get('metadata_description', '')
             })
+        logging.info("Fetched coin metadata from Supabase.")
     except Exception as e:
         logging.error(f"Error fetching coin metadata for bundle {bundle_id}: {e}", exc_info=True)
         return
 
-    # Get decisions via OpenAI decider (structured output)
+    # Get decisions via OpenAI
+    logging.info("Requesting decisions from OpenAI...")
     decisions = get_decision(bundle_id, image_url, coin_info_list)
+    logging.info(f"OpenAI decisions: {decisions}")
     if decisions is None:
         logging.error(f"No valid OpenAI decisions for bundle {bundle_id}.")
         return
 
-    # Emit overlay marks and then fade out
+    # Emit overlay marks and fade out
     try:
         socketio.emit("overlay_marks", decisions)
+        logging.info("Sent overlay_marks to frontend.")
         time.sleep(5)
         socketio.emit("fade_out", {})
+        logging.info("Sent fade_out to frontend.")
     except Exception as e:
         logging.error(f"Error overlaying marks/fading out for bundle {bundle_id}: {e}", exc_info=True)
 

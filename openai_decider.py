@@ -18,27 +18,15 @@ if not openai_api_key:
 client = OpenAI(api_key=openai_api_key)
 
 class CoinDecision(BaseModel):
-    id: str = Field(..., description="Coin ID, like '01', '02', etc.")
-    decision: Literal["yes","no"] = Field(..., description="Decision for this coin")
+    id: str = Field(..., description="Coin ID")
+    decision: Literal["yes","no"] = Field(..., description="Decision")
 
 class DecisionList(BaseModel):
     decisions: List[CoinDecision]
 
 def get_decision(bundle_id, image_url, coin_info_list):
     system_prompt = """
-You are a memecoin expert. You see an image with 8 memecoins arranged in a 2x4 grid (IDs 01 to 08).
-For each coin, I have provided its name, symbol, and description.
-Analyze them and determine which have strong potential ("yes") and which are low potential ("no").
-
-Return strictly a JSON object of the form:
-{
-   "decisions": [
-       { "id": "01", "decision": "yes" or "no" },
-       ...
-       { "id": "08", "decision": "yes" or "no" }
-   ]
-}
-No extra text.
+You are a memecoin expert...
     """.strip()
 
     user_message = "Coins data:\n"
@@ -46,6 +34,7 @@ No extra text.
         user_message += f"ID: {c['id']}\nName: {c.get('name','')}\nSymbol: {c.get('symbol','')}\nDescription: {c.get('description','')}\n\n"
 
     try:
+        logging.info("Sending request to OpenAI...")
         completion = client.beta.chat.completions.parse(
             model="gpt-4o-mini-2024-07-18",
             messages=[
@@ -61,14 +50,17 @@ No extra text.
             temperature=0.0,
             response_format=DecisionList
         )
+        logging.info(f"OpenAI raw completion response: {completion}")
+
         msg = completion.choices[0].message
         if msg.refusal:
             logging.error("Model refused to answer.")
             return None
         decisions = msg.parsed.decisions
+        logging.info(f"OpenAI parsed decisions: {decisions}")
 
         if len(decisions) != 8:
-            logging.error("OpenAI response not in expected length (8 items).")
+            logging.error("OpenAI response not 8 items.")
             return None
 
         valid_ids = {f"{i+1:02d}" for i in range(8)}
