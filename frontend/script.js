@@ -4,15 +4,14 @@ const container = document.getElementById('canvas-container');
 const BOX_WIDTH = 256;
 const BOX_HEIGHT = 128;
 
-// We'll maintain a queue of bundles waiting to be displayed
-// Each entry: { bundle_id: "xxx", coins: {id: imgUrl}, decisions: [...], ready: bool }
+// We'll maintain a queue of bundles
+// Each entry: { bundle_id: "xxx", coins: {id: imgUrl}, decisions: [], ready: bool }
 let bundleQueue = [];
 let currentBundle = null;
 let coinElements = {};
 
 socket.on("clear_canvas", (data) => {
     console.log("Received clear_canvas from server:", data);
-    // Start a new bundle entry in the queue
     if (!data.bundle_id) {
         console.warn("clear_canvas event missing bundle_id.");
         return;
@@ -54,16 +53,21 @@ socket.on("add_coin", (data) => {
 
 socket.on("overlay_marks", (decisions) => {
     console.log("Received overlay_marks from server:", decisions);
-    // Store decisions in the corresponding bundle
-    // The current displayed bundle is `currentBundle`
-    if (!bundleQueue.length) return;
-    const activeBundle = bundleQueue[bundleQueue.length - 1];
-    activeBundle.decisions = decisions;
+    if (currentBundle) {
+        currentBundle.decisions = decisions;
+        applyOverlayMarks();
+    } else {
+        // If for some reason overlay_marks arrives before startBundleDisplay
+        // Store them in the active bundle in the queue
+        if (bundleQueue.length > 0) {
+            const activeBundle = bundleQueue[bundleQueue.length - 1];
+            activeBundle.decisions = decisions;
+        }
+    }
 });
 
 socket.on("fade_out", () => {
     console.log("Received fade_out from server");
-    // Fade out current visible bundle
     fadeOutCoins();
 });
 
@@ -84,8 +88,6 @@ function startBundleDisplay(bundle) {
     coinElements = {};
 
     const coinIds = Object.keys(bundle.coins).sort();
-    let delay = 0;
-    // Render coins invisible first
     for (let coinId of coinIds) {
         const imageUrl = bundle.coins[coinId];
         const img = document.createElement('img');
@@ -98,38 +100,37 @@ function startBundleDisplay(bundle) {
 
         img.style.left = (col * BOX_WIDTH) + "px";
         img.style.top = (row * BOX_HEIGHT) + "px";
-        img.style.opacity = "0"; 
+        img.style.opacity = "0";
         container.appendChild(img);
 
         coinElements[coinId] = { imgElement: img, overlayElement: null };
     }
 
     // Fade them in one by one with a small delay
+    const coinIdsArray = coinIds.slice();
     let i = 0;
-    (function fadeNext() {
-        if (i >= coinIds.length) {
-            // Once all coins are visible, wait 1 second before showing overlays
-            setTimeout(() => {
-                applyOverlayMarks();
-            }, 1000);
+    function fadeNextCoin() {
+        if (i >= coinIdsArray.length) {
+            // Once all coins are visible, apply overlay if any
+            applyOverlayMarks();
             return;
         }
-        
-        const cid = coinIds[i];
+        const cid = coinIdsArray[i];
         const coin = coinElements[cid];
         if (coin) {
             requestAnimationFrame(() => {
                 setTimeout(() => {
                     coin.imgElement.style.opacity = "1";
                     i++;
-                    fadeNext();
-                }, 200); // 200ms between each coin fade in
+                    fadeNextCoin();
+                }, 200); // staggered fade-in
             });
         } else {
             i++;
-            fadeNext();
+            fadeNextCoin();
         }
-    })();
+    }
+    fadeNextCoin();
 }
 
 function applyOverlayMarks() {
@@ -139,8 +140,7 @@ function applyOverlayMarks() {
         if (!coin) return;
         const overlay = document.createElement('img');
         overlay.classList.add('overlay-mark');
-        // Updated paths to overlay images
-        overlay.src = d.decision === "yes" ? "/images/greenmark.png" : "/images/redcross.png";
+        overlay.src = d.decision === "yes" ? "/static/greenmark.png" : "/static/redcross.png";
 
         const index = parseInt(d.id, 10)-1;
         const row = Math.floor(index / 2);
@@ -148,8 +148,6 @@ function applyOverlayMarks() {
         overlay.style.left = (col * BOX_WIDTH + 5) + "px";
         overlay.style.top = (row * BOX_HEIGHT + 5) + "px";
 
-        // Initially set opacity to 0 for transition
-        overlay.style.opacity = "0";
         container.appendChild(overlay);
         coin.overlayElement = overlay;
         requestAnimationFrame(() => {
