@@ -1,61 +1,52 @@
-# Ignore virtual environment
-venv/
-.venv/
-
-# Python cache files
+# Ignore Python cache files
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
 
-# Environment variables file
+# Ignore node_modules
+node_modules/
+
+# Ignore log files
+*.log
+
+# Ignore virtual environments
+venv/
 .env
 
-# Log files
-*.log
-*.out
-*.err
+# Ignore Puppeteer data and screenshots
+puppeteer_data/
+screenshots/
 
-# Compiled files and build artifacts
-build/
-dist/
-*.egg-info/
-
-# Fonts or binaries (optional, if not critical)
+# Ignore compiled font and unnecessary font files
 *.ttf
-*.otf
-*.woff
-*.woff2
 
-# IDE and editor configurations
-.vscode/
+# Ignore build artifacts
+dist/
+build/
+*.bundle.*
+
+# Ignore temporary files and system files
+*.tmp
+*.swp
+*.DS_Store
+*.Thumbs.db
+
+# Ignore any generated files
+*.lock
+package-lock.json
+yarn.lock
+
+# Ignore IDE configurations
 .idea/
+.vscode/
 *.iml
 
-# OS-specific files
-.DS_Store
-Thumbs.db
-desktop.ini
+# Ignore environment variable files
+.env
 
-# Pip environment files
-pip-log.txt
-pip-delete-this-directory.txt
+# Ignore frontend build files
+public/styles.css
+public/*.map
 
-# Ignore coverage reports
-.coverage
-.coverage.*
-htmlcov/
-cov.xml
-
-# Pytest cache
-.pytest_cache/
-
-# Ignore temp and generated files
-*.tmp
-*.temp
-*.bak
-
-# Ignore any local backups
-*.swp
-*.swo
-*.bak
-*.orig
+# Ignore other temporary files
+pruner.log

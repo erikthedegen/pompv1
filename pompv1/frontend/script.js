@@ -60,6 +60,29 @@ socket.on("fade_out", () => {
   console.log("Received fade_out (unused in watermill approach).");
 });
 
+// NEW listener for disqualified coins
+socket.on("disqualified_coin", (data) => {
+  console.log("Received disqualified_coin:", data);
+  // Show a big red "DISQUALIFIED" overlay
+  const msgDiv = document.createElement("div");
+  msgDiv.style.position = "fixed";
+  msgDiv.style.top = "50%";
+  msgDiv.style.left = "50%";
+  msgDiv.style.transform = "translate(-50%, -50%)";
+  msgDiv.style.backgroundColor = "rgba(255,0,0,0.8)";
+  msgDiv.style.color = "#fff";
+  msgDiv.style.padding = "20px";
+  msgDiv.style.fontSize = "30px";
+  msgDiv.style.zIndex = 9999;
+  msgDiv.textContent = "DISQUALIFIED";
+  document.body.appendChild(msgDiv);
+
+  // Remove after 5 seconds (optional)
+  setTimeout(() => {
+    msgDiv.remove();
+  }, 5000);
+});
+
 /**
  * Attempt to start the next bundle if we're not currently displaying one.
  */
@@ -102,7 +125,7 @@ const STROBE_FREQUENCY = 20;  // times per second
 const STROBE_OPACITY = 0.5;
 const FINAL_OPACITY = 0.8;
 
-// The vertical line where strobe triggers (like in reference code)
+// The vertical line where strobe triggers
 const MARKING_LINE_POSITION = canvas.height - 90;
 
 // We'll store loaded images in a cache: { url: HTMLImageElement }
@@ -212,8 +235,6 @@ function animate(time) {
 
       // Fade in at top
       if (coin.y > -coin.fadeInDistance && coin.y < 0) {
-        // e.g. if coin.y = -coin.fadeInDistance => opacity=0
-        // coin.y=0 => opacity=1
         const ratio = 1 - Math.abs(coin.y / coin.fadeInDistance);
         coin.opacity = Math.max(0, Math.min(1, ratio));
       } else if (coin.y >= 0) {
@@ -225,8 +246,6 @@ function animate(time) {
       const bottomEdge = coin.y + IMAGE_HEIGHT;
       if (bottomEdge > (canvas.height - coin.fadeOutDistance)) {
         const distFromTrigger = (canvas.height - bottomEdge);
-        // e.g. bottomEdge=canvas.height => distFromTrigger=0 => opacity=0
-        // bottomEdge=canvas.height - coin.fadeOutDistance => distFromTrigger= -fadeOutDistance => opacity=1
         const ratio = 1 + (distFromTrigger / coin.fadeOutDistance);
         coin.opacity = Math.max(0, Math.min(coin.opacity, ratio));
       }
@@ -266,7 +285,7 @@ function animate(time) {
       }
     });
 
-    // Draw coins in front -> back order
+    // Draw coins
     activeCoins.forEach((coin) => {
       if (!imageCache[coin.url]) return; // skip if not loaded
 
