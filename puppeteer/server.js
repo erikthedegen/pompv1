@@ -20,25 +20,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const USER_DATA_DIR = process.env.USER_DATA_DIR || "./puppeteer_data";
 
-// We'll read the watermill flask URL from .env
 const WATERMILL_FLASK_URL = process.env.WATERMILL_FLASK_URL || "http://localhost:5000";
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/screenshots", express.static(path.join(__dirname, "screenshots")));
 
-// Initialize Puppeteer
 const puppeteerController = new PuppeteerController({ userDataDir: USER_DATA_DIR });
 puppeteerController.init().catch((error) => {
   console.error("Failed to initialize Puppeteer:", error);
   process.exit(1);
 });
 
-/**
- * Original route: /api/process
- * Takes a URL, decides if it's Twitter or a normal image,
- * calls Puppeteer, returns a local screenshot path.
- */
 app.post("/api/process", async (req, res) => {
   const { url } = req.body;
   if (!url || typeof url !== "string" || !isURL(url, { protocols: ["http", "https"], require_protocol: true })) {
@@ -64,10 +57,6 @@ app.post("/api/process", async (req, res) => {
   }
 });
 
-/**
- * Utility function to upload screenshot to new lens route:
- * /upload_screenshot_lens => returns a public domain Cloudflare URL
- */
 async function uploadScreenshotLens(localFilePath, remoteFileName) {
   try {
     const fileBuffer = fs.readFileSync(localFilePath);
@@ -93,11 +82,6 @@ async function uploadScreenshotLens(localFilePath, remoteFileName) {
   }
 }
 
-/**
- * /api/lens-screenshot
- * Uses Puppeteer google lens approach, then calls /upload_screenshot_lens in python
- * so that we get a publicly accessible domain link
- */
 app.post("/api/lens-screenshot", async (req, res) => {
   try {
     const { imageUrl } = req.body;
@@ -105,15 +89,12 @@ app.post("/api/lens-screenshot", async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid imageUrl." });
     }
 
-    // 1) Puppeteer: google lens approach => local screenshot path
     const localScreenshotPath = await puppeteerController.searchWithImage(imageUrl);
     if (!localScreenshotPath) {
       return res.status(500).json({ success: false, message: "Failed to take lens screenshot." });
     }
 
     const absolutePath = path.join(__dirname, localScreenshotPath);
-
-    // 2) Upload via the new lens route
     const remoteFileName = `lens_${Date.now()}.png`;
     const finalUrl = await uploadScreenshotLens(absolutePath, remoteFileName);
     if (!finalUrl) {
@@ -127,11 +108,6 @@ app.post("/api/lens-screenshot", async (req, res) => {
   }
 });
 
-/**
- * /api/twitter-screenshot
- * Takes a twitterUrl, calls Puppeteer, then calls /upload_screenshot_lens 
- * so the final URL is publicly accessible for GPT.
- */
 app.post("/api/twitter-screenshot", async (req, res) => {
   try {
     const { twitterUrl } = req.body;
@@ -145,7 +121,6 @@ app.post("/api/twitter-screenshot", async (req, res) => {
     }
 
     const absolutePath = path.join(__dirname, localScreenshotPath);
-
     const remoteFileName = `twitter_${Date.now()}.png`;
     const finalUrl = await uploadScreenshotLens(absolutePath, remoteFileName);
     if (!finalUrl) {
@@ -159,13 +134,12 @@ app.post("/api/twitter-screenshot", async (req, res) => {
   }
 });
 
-// Start screen recording
+// The routes below remain (but the front-end no longer uses them).
 app.post("/api/start-recording", (req, res) => {
   puppeteerController.startScreenRecording();
   return res.status(200).json({ success: true, message: "Screen recording started." });
 });
 
-// Stop screen recording
 app.post("/api/stop-recording", (req, res) => {
   puppeteerController.stopScreenRecording();
   return res.status(200).json({ success: true, message: "Screen recording stopped." });

@@ -83,9 +83,52 @@ socket.on("disqualified_coin", (data) => {
   }, 5000);
 });
 
-/**
- * Attempt to start the next bundle if we're not currently displaying one.
- */
+/****************************************************
+ * NEW: "active_investigation" overlay
+ ****************************************************/
+const investigationImg = document.getElementById('investigationImage');
+
+// Show an image in the center until told to stop
+socket.on("start_investigation", (data) => {
+  console.log("start_investigation =>", data);
+  const { image_url } = data;
+  if (image_url) {
+    investigationImg.src = image_url;
+    investigationImg.style.display = 'block';
+  }
+});
+
+// Fade out / remove that image
+socket.on("stop_investigation", () => {
+  console.log("stop_investigation");
+  if (investigationImg.style.display !== 'none') {
+    investigationImg.style.display = 'none';
+    investigationImg.src = '';
+  }
+});
+
+/****************************************************
+ * Watermill Scrolling Logic
+ ****************************************************/
+
+const canvas = document.getElementById("feedCanvas");
+const ctx = canvas.getContext("2d");
+
+const IMAGE_WIDTH = 256;
+const IMAGE_HEIGHT = 128;
+const RECT_SPACING = 5; 
+const SPEED = 1;
+const STROBE_DURATION = 700;
+const STROBE_FREQUENCY = 20;
+const STROBE_OPACITY = 0.5;
+const FINAL_OPACITY = 0.8;
+
+const MARKING_LINE_POSITION = canvas.height - 90;
+
+const imageCache = {};
+let activeCoins = [];
+let nextSpawnY = -(IMAGE_HEIGHT + RECT_SPACING);
+
 function tryToStartNextBundle() {
   if (!currentBundleId) {
     const next = bundleQueue.find(b => b.ready);
@@ -96,9 +139,6 @@ function tryToStartNextBundle() {
   }
 }
 
-/**
- * Once a bundle is fully scrolled off, remove it from queue and reset current.
- */
 function finishCurrentBundle() {
   const idx = bundleQueue.findIndex(b => b.bundle_id === currentBundleId);
   if (idx !== -1) {
@@ -108,52 +148,18 @@ function finishCurrentBundle() {
   tryToStartNextBundle();
 }
 
-/****************************************************
- * Watermill Scrolling Logic
- ****************************************************/
-
-const canvas = document.getElementById("feedCanvas");
-const ctx = canvas.getContext("2d");
-
-// Basic constants (mimicking your reference sweriko-watermill)
-const IMAGE_WIDTH = 256;
-const IMAGE_HEIGHT = 128;
-const RECT_SPACING = 5; // gap between images if we spawn them rapidly
-const SPEED = 1;        // vertical speed (px per frame)
-const STROBE_DURATION = 700;  // ms
-const STROBE_FREQUENCY = 20;  // times per second
-const STROBE_OPACITY = 0.5;
-const FINAL_OPACITY = 0.8;
-
-// The vertical line where strobe triggers
-const MARKING_LINE_POSITION = canvas.height - 90;
-
-// We'll store loaded images in a cache: { url: HTMLImageElement }
-const imageCache = {};
-
-// The active images on screen at any one time
-let activeCoins = [];
-
-// Where the next coin spawns (so we can space them out a bit)
-let nextSpawnY = -(IMAGE_HEIGHT + RECT_SPACING);
-
-/**
- * Called once a bundle is ready: we spawn its coins into our scroller.
- */
 function startBundleDisplay(bundle) {
   console.log("Starting bundle display:", bundle.bundle_id);
 
-  // If we haven't stored decisions for this bundle yet, create a blank object
   if (!decisionsStore[bundle.bundle_id]) {
     decisionsStore[bundle.bundle_id] = {};
   }
 
-  // Preload images
   let loadCount = 0;
   const totalToLoad = bundle.coins.length;
 
   function spawnCoins() {
-    bundle.coins.forEach((coin, index) => {
+    bundle.coins.forEach((coin) => {
       const localDecision = decisionsStore[bundle.bundle_id][coin.id] || null;
       activeCoins.push(createCoinInstance(
         coin.url,
@@ -166,7 +172,6 @@ function startBundleDisplay(bundle) {
 
   bundle.coins.forEach(coin => {
     if (imageCache[coin.url]) {
-      // Already loaded or attempted load
       loadCount++;
       if (loadCount === totalToLoad) spawnCoins();
     } else {
@@ -187,62 +192,46 @@ function startBundleDisplay(bundle) {
   });
 }
 
-/**
- * Create a coin instance to animate. 
- * Y position is spaced so they appear one after another.
- */
 function createCoinInstance(url, coinId, bundleId, decision) {
   const instance = {
     bundleId,
     coinId,
     url,
-    x: (canvas.width - IMAGE_WIDTH) / 2, // center
+    x: (canvas.width - IMAGE_WIDTH) / 2,
     y: nextSpawnY,
     opacity: 0,
     isStrobing: false,
     strobeStart: 0,
     finalOverlay: null,
-    decision: decision, // "yes" or "no" or null
+    decision,
 
-    // We'll fade in from top region
     fadeInDistance: IMAGE_HEIGHT * 1.5,
-    // We'll fade out near the bottom
     fadeOutDistance: IMAGE_HEIGHT * 1.5
   };
   
-  // Update nextSpawnY so the next coin spawns a bit above the current
   nextSpawnY -= (IMAGE_HEIGHT + RECT_SPACING);
-
   return instance;
 }
 
-/**
- * Main animation loop: updates positions, handles strobe logic, draws coins.
- */
 function animate(time) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (activeCoins.length > 0) {
     activeCoins.forEach((coin) => {
-      // Move downward
       coin.y += SPEED;
 
-      // Possibly refresh coin.decision if server data arrived after creation
       if (!coin.decision) {
         const d = decisionsStore[coin.bundleId][coin.coinId];
         if (d) coin.decision = d;
       }
 
-      // Fade in at top
       if (coin.y > -coin.fadeInDistance && coin.y < 0) {
         const ratio = 1 - Math.abs(coin.y / coin.fadeInDistance);
         coin.opacity = Math.max(0, Math.min(1, ratio));
       } else if (coin.y >= 0) {
-        // fully visible until we start fade out
         coin.opacity = 1;
       }
 
-      // Fade out near bottom
       const bottomEdge = coin.y + IMAGE_HEIGHT;
       if (bottomEdge > (canvas.height - coin.fadeOutDistance)) {
         const distFromTrigger = (canvas.height - bottomEdge);
@@ -250,44 +239,37 @@ function animate(time) {
         coin.opacity = Math.max(0, Math.min(coin.opacity, ratio));
       }
 
-      // Strobe trigger
       if (!coin.isStrobing && (coin.y + IMAGE_HEIGHT) >= MARKING_LINE_POSITION) {
         coin.isStrobing = true;
         coin.strobeStart = time;
       }
 
-      // If strobing, handle strobe
       if (coin.isStrobing && !coin.finalOverlay) {
         const elapsed = time - coin.strobeStart;
         if (elapsed < STROBE_DURATION) {
-          // strobe
           const freqPhase = Math.floor((elapsed / 1000) * STROBE_FREQUENCY) % 2;
           coin.currentOverlay = freqPhase === 0
             ? `rgba(255,0,0,${STROBE_OPACITY})`
             : `rgba(0,255,0,${STROBE_OPACITY})`;
         } else {
-          // end strobe -> fix final color
           if (coin.decision === "yes") {
             coin.finalOverlay = `rgba(0,255,0,${FINAL_OPACITY})`;
           } else if (coin.decision === "no") {
             coin.finalOverlay = `rgba(255,0,0,${FINAL_OPACITY})`;
           } else {
-            // If still no decision, default red
             coin.finalOverlay = `rgba(255,0,0,${FINAL_OPACITY})`;
           }
           coin.currentOverlay = coin.finalOverlay;
         }
       } else if (coin.finalOverlay) {
-        // maintain final color after strobe
         coin.currentOverlay = coin.finalOverlay;
       } else {
         coin.currentOverlay = null;
       }
     });
 
-    // Draw coins
     activeCoins.forEach((coin) => {
-      if (!imageCache[coin.url]) return; // skip if not loaded
+      if (!imageCache[coin.url]) return;
 
       ctx.save();
       ctx.globalAlpha = coin.opacity;
@@ -300,12 +282,10 @@ function animate(time) {
       ctx.restore();
     });
 
-    // Remove coins that have fully passed the bottom or are at opacity 0
     while (activeCoins.length && activeCoins[0].y > canvas.height) {
       activeCoins.shift();
     }
 
-    // If no coin from the currentBundleId is left on screen => done
     const anyActiveFromCurrentBundle = activeCoins.some(c => c.bundleId === currentBundleId);
     if (!anyActiveFromCurrentBundle && currentBundleId) {
       console.log("All coins from bundle", currentBundleId, "scrolled away. Finishing bundle.");
@@ -316,5 +296,4 @@ function animate(time) {
   requestAnimationFrame(animate);
 }
 
-// Start the animation loop
 requestAnimationFrame(animate);

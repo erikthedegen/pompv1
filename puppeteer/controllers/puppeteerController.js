@@ -58,6 +58,9 @@ class PuppeteerController {
     } catch (err) {
       console.log('Twitter login not detected; you can still do image-based tasks.');
     }
+
+    // Automatically start screen recording on startup
+    this.startScreenRecording();
   }
 
   async waitForLogin(timeout = 60000) {

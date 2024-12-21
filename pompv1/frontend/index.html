@@ -1,3 +1,4 @@
+<!-- File: /pompv1/frontend/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,12 +17,9 @@
       height: 100vh;
       background-color: #f0f0f0;
       overflow: hidden;
+      position: relative;
     }
 
-    /* 
-      The reference used a canvas of width=300 and height=700, 
-      absolutely positioned. 
-    */
     canvas {
       display: block;
       position: absolute;
@@ -30,14 +28,28 @@
       background-color: transparent;
       border: none;
     }
+
+    /* New overlay image for "active investigation" */
+    #investigationImage {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 600px;
+      max-height: 600px;
+      border: 2px solid #000;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      background-color: #fff;
+      z-index: 9999;
+    }
   </style>
 </head>
 <body>
-  <!-- 
-    The reference example uses a 300×700 canvas. 
-    You can tweak these dimensions as needed.
-  -->
   <canvas id="feedCanvas" width="300" height="700"></canvas>
+  
+  <!-- This image will show the "active investigation" coin in the center -->
+  <img id="investigationImage" />
 
   <!-- Socket.io for real-time events from your server -->
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>

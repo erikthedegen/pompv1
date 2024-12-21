@@ -66,19 +66,8 @@ def find_unprocessed_coin():
 
 
 def process_goodcoin(goodcoin_row):
-    """
-    Orchestrates the entire "good coin" pipeline:
-     1) fetch coin from 'coins' table by coin_uuid
-     2) do google lens screenshot + GPT "unique"|"copy"
-     3) if "copy" => disqualify
-     4) else "unique" => do twitter screenshot + GPT "buy"|"pass"
-     5) if "buy" => call buy script, else disqualify
-    """
-    # This is the 'id' of the goodcoins row, NOT the coin's ID in 'coins'
     goodcoin_uuid = goodcoin_row['id']
-    # This references coins.id
     coin_uuid = goodcoin_row['coin_uuid']
-
     logging.info(f"Processing goodcoin row_id={goodcoin_uuid}, coin_uuid={coin_uuid}")
 
     # 1) fetch the matching row from 'coins'
@@ -88,7 +77,11 @@ def process_goodcoin(goodcoin_row):
         mark_goodcoin_processed(goodcoin_uuid, "error")
         return
 
-    # We'll want the coin_id (the textual ID used for logs?) to show or pass along
+    # We'll show the coin image in the watermill
+    image_url = goodcoin_row.get('cloudflareimage')
+    if image_url:
+        start_investigation(image_url)
+
     text_coin_id = coin_data.get('coin_id', '???')
 
     # 2) Google Lens screenshot
@@ -97,6 +90,7 @@ def process_goodcoin(goodcoin_row):
         logging.warning(f"No metadata_image_official for coin_uuid={coin_uuid}. Disqualifying.")
         mark_goodcoin_processed(goodcoin_uuid, "bad")
         emit_disqualified_event(text_coin_id)
+        stop_investigation()
         return
 
     lens_screenshot_url = do_google_lens_screenshot(meta_image_url)
@@ -104,6 +98,7 @@ def process_goodcoin(goodcoin_row):
         logging.warning("Google Lens screenshot failed. Disqualifying coin.")
         mark_goodcoin_processed(goodcoin_uuid, "bad")
         emit_disqualified_event(text_coin_id)
+        stop_investigation()
         return
 
     # 3) run GPT check for "copy"|"unique"
@@ -115,15 +110,16 @@ def process_goodcoin(goodcoin_row):
         logging.info(f"Coin {text_coin_id} => 'copy' => disqualified.")
         mark_goodcoin_processed(goodcoin_uuid, "bad")
         emit_disqualified_event(text_coin_id)
+        stop_investigation()
         return
     elif lens_judgment == "unique":
         logging.info(f"Coin {text_coin_id} => 'unique' => proceed with Twitter flow.")
-        # 4) Twitter screenshot
         twitter_url = coin_data.get('twitter')
         if not twitter_url:
             logging.warning(f"No twitter URL for coin_uuid={coin_uuid}, disqualifying.")
             mark_goodcoin_processed(goodcoin_uuid, "bad")
             emit_disqualified_event(text_coin_id)
+            stop_investigation()
             return
 
         tw_screenshot_url = do_twitter_screenshot(twitter_url)
@@ -131,9 +127,9 @@ def process_goodcoin(goodcoin_row):
             logging.warning("Twitter screenshot failed. Disqualifying coin.")
             mark_goodcoin_processed(goodcoin_uuid, "bad")
             emit_disqualified_event(text_coin_id)
+            stop_investigation()
             return
 
-        # 5) final GPT check "pass"|"buy"
         final_judgment = call_sysprompt_finaldecision_openai(tw_screenshot_url)
         if not final_judgment:
             final_judgment = "pass"
@@ -142,27 +138,28 @@ def process_goodcoin(goodcoin_row):
             logging.info(f"Coin {text_coin_id} => final pass => disqualified.")
             mark_goodcoin_processed(goodcoin_uuid, "bad")
             emit_disqualified_event(text_coin_id)
+            stop_investigation()
             return
         elif final_judgment == "buy":
             logging.info(f"Coin {text_coin_id} => final buy => calling buy script.")
-            do_buy_coin(coin_data)  # e.g. uses coin_data['mint']
+            do_buy_coin(coin_data)
             mark_goodcoin_processed(goodcoin_uuid, "buy")
+            stop_investigation()
             return
         else:
             logging.warning(f"Unknown final_judgment={final_judgment}, default pass.")
             mark_goodcoin_processed(goodcoin_uuid, "bad")
             emit_disqualified_event(text_coin_id)
+            stop_investigation()
             return
     else:
         logging.warning(f"Unknown lens_judgment={lens_judgment}, default copy => disqualified.")
         mark_goodcoin_processed(goodcoin_uuid, "bad")
         emit_disqualified_event(text_coin_id)
+        stop_investigation()
 
 
 def get_coin_data_by_uuid(coin_uuid):
-    """
-    Fetch the coin row from 'coins' table using 'id' = coin_uuid.
-    """
     try:
         resp = supabase.table('coins').select("*").eq('id', coin_uuid).execute()
         if resp.data and len(resp.data) > 0:
@@ -173,10 +170,6 @@ def get_coin_data_by_uuid(coin_uuid):
 
 
 def do_google_lens_screenshot(image_url):
-    """
-    Calls Node puppeteer to do a lens screenshot + Cloudflare upload,
-    returning the final Cloudflare URL.
-    """
     try:
         payload = {"imageUrl": image_url}
         res = requests.post(f"{NODE_SERVER_URL}/api/lens-screenshot", json=payload, timeout=120)
@@ -190,10 +183,6 @@ def do_google_lens_screenshot(image_url):
 
 
 def do_twitter_screenshot(twitter_url):
-    """
-    Calls Node puppeteer to do a Twitter screenshot + Cloudflare upload,
-    returning the final Cloudflare URL.
-    """
     try:
         payload = {"twitterUrl": twitter_url}
         res = requests.post(f"{NODE_SERVER_URL}/api/twitter-screenshot", json=payload, timeout=120)
@@ -207,9 +196,6 @@ def do_twitter_screenshot(twitter_url):
 
 
 def call_sysprompt_lens_openai(screenshot_url):
-    """
-    Expects "copy" or "unique".
-    """
     try:
         from sysprompt_lens_openai import run_lens_check
         return run_lens_check(screenshot_url)
@@ -219,9 +205,6 @@ def call_sysprompt_lens_openai(screenshot_url):
 
 
 def call_sysprompt_finaldecision_openai(screenshot_url):
-    """
-    Expects "pass" or "buy".
-    """
     try:
         from sysprompt_finaldecision_openai import run_finaldecision_check
         return run_finaldecision_check(screenshot_url)
@@ -231,9 +214,6 @@ def call_sysprompt_finaldecision_openai(screenshot_url):
 
 
 def do_buy_coin(coin_data):
-    """
-    Placeholder for your buy script
-    """
     import subprocess
     mint = coin_data.get("mint", "")
     try:
@@ -243,9 +223,6 @@ def do_buy_coin(coin_data):
 
 
 def mark_goodcoin_processed(goodcoin_id, quality_value):
-    """
-    Updates 'processed=true' and sets 'quality=...' on the goodcoins row
-    """
     try:
         supabase.table('goodcoins').update({
             "processed": True,
@@ -256,10 +233,6 @@ def mark_goodcoin_processed(goodcoin_id, quality_value):
 
 
 def emit_disqualified_event(coin_text_id):
-    """
-    We only have the textual coin_id from the 'coins' table, not from goodcoins.
-    newcoincheck sends it to image_processor so the front-end can display "DISQUALIFIED".
-    """
     if not coin_text_id:
         coin_text_id = "???"
     try:
@@ -268,6 +241,24 @@ def emit_disqualified_event(coin_text_id):
                       timeout=10)
     except Exception as e:
         logging.error(f"Failed to emit disqualified event for coin_id={coin_text_id}: {e}")
+
+
+def start_investigation(image_url):
+    try:
+        requests.post(f"{WATERMILL_FLASK_URL}/start_investigation",
+                      json={"image_url": image_url},
+                      timeout=10)
+    except Exception as e:
+        logging.error(f"Failed to start_investigation with {image_url}: {e}")
+
+
+def stop_investigation():
+    try:
+        requests.post(f"{WATERMILL_FLASK_URL}/stop_investigation",
+                      json={},
+                      timeout=10)
+    except Exception as e:
+        logging.error(f"Failed to stop_investigation: {e}")
 
 
 if __name__ == "__main__":
