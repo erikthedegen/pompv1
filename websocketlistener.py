@@ -164,7 +164,9 @@ def save_bundle_to_db(coins):
                 "metadata_image_official": coin.get("metadata_image_official", ""),
                 "metadata_name": coin.get("metadata_name", ""),
                 "metadata_symbol": coin.get("metadata_symbol", ""),
-                "metadata_description": coin.get("metadata_description", "")
+                "metadata_description": coin.get("metadata_description", ""),
+                "twitter": coin.get("twitter", None),       # New field
+                "website": coin.get("website", None)        # New field
             }
             coin_response = supabase.table('coins').insert(coin_data).execute()
             if not coin_response.data:
@@ -177,21 +179,21 @@ def save_bundle_to_db(coins):
         return None
 
 def scale_image_keep_aspect(img, max_size):
-    w,h = img.size
+    w, h = img.size
     scale = min(max_size/w, max_size/h)
     return img.resize((int(w*scale), int(h*scale)), Resampling.LANCZOS)
 
 def draw_coin_box(draw, main_image, x, y, coin_data, index):
-    draw.rectangle([x,y,x+BOX_WIDTH-1,y+BOX_HEIGHT-1], fill="white", outline="white", width=1)
-    draw.rectangle([x+2,y+2,x+BOX_WIDTH-3,y+BOX_HEIGHT-3], outline="red", width=1)
+    draw.rectangle([x, y, x+BOX_WIDTH-1, y+BOX_HEIGHT-1], fill="white", outline="white", width=1)
+    draw.rectangle([x+2, y+2, x+BOX_WIDTH-3, y+BOX_HEIGHT-3], outline="red", width=1)
 
     margin = 5
-    safe_x = x+margin
-    safe_y = y+margin
-    safe_w = BOX_WIDTH-2*margin
-    safe_h = BOX_HEIGHT-2*margin
+    safe_x = x + margin
+    safe_y = y + margin
+    safe_w = BOX_WIDTH - 2*margin
+    safe_h = BOX_HEIGHT - 2*margin
 
-    image_size=100
+    image_size = 100
     coin_img = None
     coin_img_url = coin_data.get("metadata_image_official", "")
     if coin_img_url:
@@ -208,11 +210,11 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     else:
         logging.warning(f"No image available for coin {index+1}")
 
-    img_w, img_h = 0,0
+    img_w, img_h = 0, 0
     if coin_img:
-        img_w,img_h = coin_img.size
-        img_y = safe_y+(safe_h - img_h)//2
-        main_image.paste(coin_img,(safe_x,img_y),coin_img)
+        img_w, img_h = coin_img.size
+        img_y = safe_y + (safe_h - img_h) // 2
+        main_image.paste(coin_img, (safe_x, img_y), coin_img)
 
     draw_obj = draw
     vertical_offset = 10
@@ -223,15 +225,15 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     label_x = text_start_x
     label_y = safe_y + vertical_offset
 
-    draw_obj.rectangle([label_x,label_y,label_x+LABEL_BOX_SIZE-1,label_y+LABEL_BOX_SIZE-1],
-                   fill="white", outline="red", width=1)
-    lw,lh = text_size(draw_obj, label_id_text, LABEL_FONT)
-    ltx = label_x+(LABEL_BOX_SIZE - lw)//2
-    lty = label_y+(LABEL_BOX_SIZE - lh)//2 -4
-    draw_obj.text((ltx,lty), label_id_text, fill="red", font=LABEL_FONT)
+    draw_obj.rectangle([label_x, label_y, label_x+LABEL_BOX_SIZE-1, label_y+LABEL_BOX_SIZE-1],
+                       fill="white", outline="red", width=1)
+    lw, lh = text_size(draw_obj, label_id_text, LABEL_FONT)
+    ltx = label_x + (LABEL_BOX_SIZE - lw) // 2
+    lty = label_y + (LABEL_BOX_SIZE - lh) // 2 - 4
+    draw_obj.text((ltx, lty), label_id_text, fill="red", font=LABEL_FONT)
 
     name_area_x = label_x + LABEL_BOX_SIZE + 5
-    name_area_w = (safe_x+safe_w - right_margin)-name_area_x
+    name_area_w = (safe_x + safe_w - right_margin) - name_area_x
     name_area_h = LABEL_BOX_SIZE
 
     raw_name = (coin_data.get("metadata_name") or "").strip() or "(No Name)"
@@ -239,59 +241,59 @@ def draw_coin_box(draw, main_image, x, y, coin_data, index):
     name_line_text = raw_name
     ticker_line_text = f"({symbol})" if symbol else ""
 
-    name_line, name_font = fit_single_line(draw_obj,name_line_text,name_area_w,name_area_h,
+    name_line, name_font = fit_single_line(draw_obj, name_line_text, name_area_w, name_area_h,
                                            start_font_size=NAME_START_FONT_SIZE,
                                            min_font_size=NAME_MIN_FONT_SIZE)
     nw, nh = text_size(draw_obj, name_line, name_font)
-    name_line_y = label_y+(LABEL_BOX_SIZE - nh)//2 -13
-    draw_obj.text((name_area_x,name_line_y), name_line, fill="black", font=name_font)
+    name_line_y = label_y + (LABEL_BOX_SIZE - nh) // 2 - 13
+    draw_obj.text((name_area_x, name_line_y), name_line, fill="black", font=name_font)
 
     if ticker_line_text:
-        ticker_line, ticker_font = fit_single_line(draw_obj,ticker_line_text,name_area_w,name_area_h,
+        ticker_line, ticker_font = fit_single_line(draw_obj, ticker_line_text, name_area_w, name_area_h,
                                                    start_font_size=NAME_START_FONT_SIZE,
                                                    min_font_size=NAME_MIN_FONT_SIZE)
-        tw,th = text_size(draw_obj, ticker_line, ticker_font)
+        tw, th = text_size(draw_obj, ticker_line, ticker_font)
         ticker_line_y = name_line_y + nh + 3
-        draw_obj.text((name_area_x,ticker_line_y), ticker_line, fill="black", font=ticker_font)
+        draw_obj.text((name_area_x, ticker_line_y), ticker_line, fill="black", font=ticker_font)
     else:
         ticker_line_y = name_line_y
-        th=0
+        th = 0
 
-    desc_y = ticker_line_y+(th if ticker_line_text else 0)+5
+    desc_y = ticker_line_y + (th if ticker_line_text else 0) + 5
     desc_x = text_start_x
-    desc_w = (safe_x+safe_w - right_margin)-desc_x
-    desc_h = (safe_y+safe_h)-desc_y
+    desc_w = (safe_x + safe_w - right_margin) - desc_x
+    desc_h = (safe_y + safe_h) - desc_y
 
     desc = (coin_data.get("metadata_description") or "").strip()
-    if len(desc)>60:
-        desc = desc[:60]+"..."
+    if len(desc) > 60:
+        desc = desc[:60] + "..."
 
     if desc:
-        desc_lines, desc_font = fit_description(draw_obj,desc,desc_w,desc_h,
+        desc_lines, desc_font = fit_description(draw_obj, desc, desc_w, desc_h,
                                                 start_font_size=DESC_START_FONT_SIZE,
                                                 min_font_size=DESC_MIN_FONT_SIZE)
         if desc_lines is None:
             small_font = load_font(FONT_PATH, MIN_FONT_SIZE)
-            draw_obj.text((desc_x,desc_y), "[Desc too long]", fill="black", font=small_font)
+            draw_obj.text((desc_x, desc_y), "[Desc too long]", fill="black", font=small_font)
         else:
             for dl in desc_lines:
-                tw,th = text_size(draw_obj, dl, desc_font)
-                draw_obj.text((desc_x,desc_y), dl, fill="black", font=desc_font)
+                tw, th = text_size(draw_obj, dl, desc_font)
+                draw_obj.text((desc_x, desc_y), dl, fill="black", font=desc_font)
                 desc_y += th + LINE_SPACING
 
 def create_image_for_coins(coins, bundle_id):
     os.makedirs("bundleimagesmain", exist_ok=True)
     from PIL import ImageDraw
-    main_image = Image.new('RGBA', (IMG_WIDTH, IMG_HEIGHT), (255,255,255,255))
+    main_image = Image.new('RGBA', (IMG_WIDTH, IMG_HEIGHT), (255, 255, 255, 255))
     draw = ImageDraw.Draw(main_image)
     for i, coin in enumerate(coins):
-        row = i//GRID_COLS
-        col = i%GRID_COLS
-        x = col*BOX_WIDTH
-        y = row*BOX_HEIGHT
+        row = i // GRID_COLS
+        col = i % GRID_COLS
+        x = col * BOX_WIDTH
+        y = row * BOX_HEIGHT
         draw_coin_box(draw, main_image, x, y, coin, i)
     filename = os.path.join("bundleimagesmain", f"{bundle_id}.png")
-    main_image.save(filename,"PNG")
+    main_image.save(filename, "PNG")
     logging.info(f"Saved image: {filename}")
     return filename
 
@@ -310,13 +312,15 @@ def on_message(ws, message):
                 response = requests.get(metadata_url, timeout=5)
                 if response.status_code == 200:
                     metadata = response.json()
-                    data["metadata_name"] = metadata.get("name","")
-                    data["metadata_symbol"] = metadata.get("symbol","")
-                    data["metadata_description"] = metadata.get("description","")
-                    data["metadata_image"] = metadata.get("image","")
+                    data["metadata_name"] = metadata.get("name", "")
+                    data["metadata_symbol"] = metadata.get("symbol", "")
+                    data["metadata_description"] = metadata.get("description", "")
+                    data["metadata_image"] = metadata.get("image", "")
+                    data["twitter"] = metadata.get("twitter", None)     # Extract twitter
+                    data["website"] = metadata.get("website", None)     # Extract website
                     if data["metadata_image"]:
                         parts = data["metadata_image"].split("/ipfs/")
-                        if len(parts)==2:
+                        if len(parts) == 2:
                             image_hash = parts[1]
                             official_image_url = f"https://pump.mypinata.cloud/ipfs/{image_hash}?img-width=256&img-dpr=2&img-onerror=redirect"
                             data["metadata_image_official"] = official_image_url
@@ -325,24 +329,28 @@ def on_message(ws, message):
                     else:
                         data["metadata_image_official"] = ""
                 else:
-                    logging.warning(f"Failed to fetch metadata from {metadata_url}: {response.status_code}")
+                    logging.warning(f"Failed to fetch metadata from {metadata_url}: Status {response.status_code}")
                     data["metadata_name"] = ""
                     data["metadata_symbol"] = ""
                     data["metadata_description"] = ""
                     data["metadata_image_official"] = ""
+                    data["twitter"] = None
+                    data["website"] = None
             except Exception as e:
                 logging.error(f"Error fetching metadata from {metadata_url}: {e}", exc_info=True)
                 data["metadata_name"] = ""
                 data["metadata_symbol"] = ""
                 data["metadata_description"] = ""
                 data["metadata_image_official"] = ""
+                data["twitter"] = None
+                data["website"] = None
 
         logging.info("New Token Event Received:")
         logging.info(json.dumps(data, indent=4))
 
         coins_buffer.append(data)
 
-        if len(coins_buffer)==TOTAL_COINS:
+        if len(coins_buffer) == TOTAL_COINS:
             bundle_id = save_bundle_to_db(coins_buffer)
             if bundle_id:
                 filename = create_image_for_coins(coins_buffer, bundle_id)
@@ -377,7 +385,7 @@ def on_close(ws, close_status_code, close_msg):
 def on_open(ws):
     logging.info("WebSocket Opened. Subscribing to 'subscribeNewToken' events...")
     try:
-        payload = {"method":"subscribeNewToken"}
+        payload = {"method": "subscribeNewToken"}
         ws.send(json.dumps(payload))
         logging.info("Subscribed to 'subscribeNewToken' events.")
     except Exception as e:
@@ -394,7 +402,7 @@ def connect_websocket():
     )
     ws.run_forever()
 
-if __name__=="__main__":
+if __name__ == "__main__":
     if not os.path.isfile(FONT_PATH):
         logging.warning(f"Font file '{FONT_PATH}' not found. Using default font.")
     connect_websocket()
