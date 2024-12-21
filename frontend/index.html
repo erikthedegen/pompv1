@@ -1,40 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Popcoin Machine</title>
-    <!-- Tailwind CSS CDN -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css" rel="stylesheet">
-    <style>
-        #canvas-container {
-            position: relative;
-            width: 512px;
-            height: 512px;
-            background: #fff;
-            overflow: hidden;
-        }
-        .coin-img {
-            position: absolute;
-            opacity: 0;
-            transition: opacity 0.5s;
-        }
-        .overlay-mark {
-            position: absolute;
-            width: 24px;
-            height: 24px;
-            transition: opacity 0.5s;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Watermill Coin Feed</title>
+  <style>
+    /* 
+      Mimicking the reference: 
+      - full window usage, 
+      - hide overflow, 
+      - background color #f0f0f0 
+    */
+    body {
+      margin: 0;
+      height: 100vh;
+      background-color: #f0f0f0;
+      overflow: hidden;
+    }
+
+    /* 
+      The reference used a canvas of width=300 and height=700, 
+      absolutely positioned. 
+    */
+    canvas {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      background-color: transparent;
+      border: none;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+<body>
+  <!-- 
+    The reference example uses a 300×700 canvas. 
+    You can tweak these dimensions as needed.
+  -->
+  <canvas id="feedCanvas" width="300" height="700"></canvas>
 
-    <div class="text-center space-y-4">
-        <h1 class="text-4xl font-bold text-gray-800">Popcoin Machine</h1>
-        <div id="canvas-container" class="mx-auto border border-gray-300 rounded shadow-lg relative"></div>
-    </div>
+  <!-- Socket.io for real-time events from your server -->
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <script src="/static/script.js"></script>
+  <!-- Our main logic -->
+  <script src="/static/script.js"></script>
 </body>
 </html>
