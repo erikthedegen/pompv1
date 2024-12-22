@@ -1,7 +1,8 @@
-/****************************************************
- * Socket.io + Bundles/Decisions
- ****************************************************/
+// File: /pompv1/frontend/script.js
 
+/****************************************************
+ * Socket.io + Bundles/Decisions (Watermill Feed)
+ ****************************************************/
 const socket = io();
 
 // We keep track of bundles + decisions
@@ -60,57 +61,209 @@ socket.on("fade_out", () => {
   console.log("Received fade_out (unused in watermill approach).");
 });
 
-// NEW listener for disqualified coins
+// NEW listener for disqualified (or "pass") coins
 socket.on("disqualified_coin", (data) => {
   console.log("Received disqualified_coin:", data);
-  // Show a big red "DISQUALIFIED" overlay
-  const msgDiv = document.createElement("div");
-  msgDiv.style.position = "fixed";
-  msgDiv.style.top = "50%";
-  msgDiv.style.left = "50%";
-  msgDiv.style.transform = "translate(-50%, -50%)";
-  msgDiv.style.backgroundColor = "rgba(255,0,0,0.8)";
-  msgDiv.style.color = "#fff";
-  msgDiv.style.padding = "20px";
-  msgDiv.style.fontSize = "30px";
-  msgDiv.style.zIndex = 9999;
-  msgDiv.textContent = "DISQUALIFIED";
-  document.body.appendChild(msgDiv);
 
-  // Remove after 5 seconds (optional)
-  setTimeout(() => {
-    msgDiv.remove();
-  }, 5000);
+  // Interpret "disqualified_coin" as a "PASS" scenario
+  createPassOverlay(); 
+  // For "buy" scenarios, you can emit a different event and handle similarly
 });
 
 /****************************************************
- * NEW: "active_investigation" overlay
+ * NEW: "active_investigation" logic - separate canvas
  ****************************************************/
-const investigationImg = document.getElementById('investigationImage');
 
-// Show an image in the center until told to stop
+// Grab the investigation canvas and context
+const investigationCanvas = document.getElementById('investigationCanvas');
+const invCtx = investigationCanvas.getContext('2d');
+
+// We'll keep an in-memory image that we draw into this canvas.
+let investigationImage = null;
+// We'll track if a fade-out is in progress for the overlay
+let overlayAlpha = 0;
+let overlayAnimating = false;
+let overlayType = null; // "pass" or "buy"
+
 socket.on("start_investigation", (data) => {
   console.log("start_investigation =>", data);
   const { image_url } = data;
   if (image_url) {
-    investigationImg.src = image_url;
-    investigationImg.style.display = 'block';
+    // Load image
+    investigationImage = new Image();
+    investigationImage.src = image_url;
+    investigationImage.onload = () => {
+      // Make the canvas visible
+      investigationCanvas.style.display = 'block';
+      // Reset any overlays
+      overlayAlpha = 0;
+      overlayAnimating = false;
+      overlayType = null;
+      // Draw the coin
+      drawInvestigation();
+    };
   }
 });
 
-// Fade out / remove that image
 socket.on("stop_investigation", () => {
   console.log("stop_investigation");
-  if (investigationImg.style.display !== 'none') {
-    investigationImg.style.display = 'none';
-    investigationImg.src = '';
+  // Fade out the overlay and then hide the canvas
+  if (overlayType) {
+    overlayAnimating = true;
+  } else {
+    // No overlay to fade out, simply hide
+    investigationCanvas.style.display = 'none';
+    invCtx.clearRect(0, 0, investigationCanvas.width, investigationCanvas.height);
+    investigationImage = null;
   }
 });
 
-/****************************************************
- * Watermill Scrolling Logic
- ****************************************************/
+/**
+ * Render loop for the investigation canvas.
+ */
+function drawInvestigation() {
+  // Clear
+  invCtx.clearRect(0, 0, investigationCanvas.width, investigationCanvas.height);
 
+  if (investigationImage) {
+    // Draw the coin image at its natural size without scaling
+    invCtx.drawImage(investigationImage, 0, 0, 256, 128);
+  }
+
+  // If there's a pass/buy overlay in progress, draw it
+  if (overlayType && overlayAlpha < 1) {
+    overlayAlpha += 0.02; // speed of fade in
+    if (overlayAlpha > 1) {
+      overlayAlpha = 1;
+    }
+  }
+
+  if (overlayType) {
+    invCtx.save();
+    invCtx.globalAlpha = overlayAlpha;
+
+    if (overlayType === "pass") {
+      // Dim black overlay
+      invCtx.fillStyle = "rgba(0,0,0,0.7)";
+      invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
+      // "PASS" in red
+      invCtx.font = "bold 24px sans-serif";
+      invCtx.fillStyle = "red";
+      const text = "PASS";
+      const textWidth = invCtx.measureText(text).width;
+      const textX = (investigationCanvas.width - textWidth) / 2;
+      const textY = (investigationCanvas.height / 2) + 8; 
+      invCtx.fillText(text, textX, textY);
+
+    } else if (overlayType === "buy") {
+      // Green overlay
+      invCtx.fillStyle = "rgba(0,128,0,0.8)";
+      invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
+      // "BOUGHT" in white
+      invCtx.font = "bold 24px sans-serif";
+      invCtx.fillStyle = "white";
+      const text = "BOUGHT";
+      const textWidth = invCtx.measureText(text).width;
+      const textX = (investigationCanvas.width - textWidth) / 2;
+      const textY = (investigationCanvas.height / 2) + 8; 
+      invCtx.fillText(text, textX, textY);
+    }
+
+    invCtx.restore();
+  }
+
+  // If overlay is animating (fading out)
+  if (overlayAnimating) {
+    if (overlayAlpha > 0) {
+      overlayAlpha -= 0.02; // speed of fade out
+      if (overlayAlpha < 0) {
+        overlayAlpha = 0;
+      }
+      // Redraw with updated alpha
+      if (investigationImage) {
+        invCtx.drawImage(investigationImage, 0, 0, 256, 128);
+      }
+      if (overlayAlpha > 0) {
+        invCtx.save();
+        invCtx.globalAlpha = overlayAlpha;
+
+        if (overlayType === "pass") {
+          // Dim black overlay
+          invCtx.fillStyle = "rgba(0,0,0,0.7)";
+          invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
+          // "PASS" in red
+          invCtx.font = "bold 24px sans-serif";
+          invCtx.fillStyle = "red";
+          const text = "PASS";
+          const textWidth = invCtx.measureText(text).width;
+          const textX = (investigationCanvas.width - textWidth) / 2;
+          const textY = (investigationCanvas.height / 2) + 8; 
+          invCtx.fillText(text, textX, textY);
+
+        } else if (overlayType === "buy") {
+          // Green overlay
+          invCtx.fillStyle = "rgba(0,128,0,0.8)";
+          invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
+          // "BOUGHT" in white
+          invCtx.font = "bold 24px sans-serif";
+          invCtx.fillStyle = "white";
+          const text = "BOUGHT";
+          const textWidth = invCtx.measureText(text).width;
+          const textX = (investigationCanvas.width - textWidth) / 2;
+          const textY = (investigationCanvas.height / 2) + 8; 
+          invCtx.fillText(text, textX, textY);
+        }
+
+        invCtx.restore();
+      }
+    } else {
+      // Overlay fully faded out, hide canvas
+      overlayAnimating = false;
+      overlayType = null;
+      investigationCanvas.style.display = 'none';
+      invCtx.clearRect(0, 0, investigationCanvas.width, investigationCanvas.height);
+      investigationImage = null;
+    }
+  }
+
+  requestAnimationFrame(drawInvestigation);
+}
+
+requestAnimationFrame(drawInvestigation);
+
+/**
+ * Called when we want a "PASS" overlay on the investigation canvas.
+ * If you have a separate event for "buy," you could handle it similarly.
+ */
+function createPassOverlay() {
+  overlayType = "pass";
+  overlayAlpha = 0;
+  overlayAnimating = false;
+  // Overlay will fade in and then fade out after a delay
+  setTimeout(() => {
+    // Start fade out after a short delay
+    overlayAnimating = true;
+  }, 3000); // Adjust delay as needed
+}
+
+/**
+ * If you implement a "buy" scenario with a separate event,
+ * you can create a similar function:
+ */
+function createBuyOverlay() {
+  overlayType = "buy";
+  overlayAlpha = 0;
+  overlayAnimating = false;
+  // Overlay will fade in and then fade out after a delay
+  setTimeout(() => {
+    // Start fade out after a short delay
+    overlayAnimating = true;
+  }, 3000); // Adjust delay as needed
+}
+
+/****************************************************
+ * Watermill Scrolling Logic (unchanged below)
+ ****************************************************/
 const canvas = document.getElementById("feedCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -225,6 +378,7 @@ function animate(time) {
         if (d) coin.decision = d;
       }
 
+      // Fade in
       if (coin.y > -coin.fadeInDistance && coin.y < 0) {
         const ratio = 1 - Math.abs(coin.y / coin.fadeInDistance);
         coin.opacity = Math.max(0, Math.min(1, ratio));
@@ -232,6 +386,7 @@ function animate(time) {
         coin.opacity = 1;
       }
 
+      // Fade out near bottom
       const bottomEdge = coin.y + IMAGE_HEIGHT;
       if (bottomEdge > (canvas.height - coin.fadeOutDistance)) {
         const distFromTrigger = (canvas.height - bottomEdge);
@@ -239,6 +394,7 @@ function animate(time) {
         coin.opacity = Math.max(0, Math.min(coin.opacity, ratio));
       }
 
+      // Strobing / final overlay logic
       if (!coin.isStrobing && (coin.y + IMAGE_HEIGHT) >= MARKING_LINE_POSITION) {
         coin.isStrobing = true;
         coin.strobeStart = time;
@@ -282,6 +438,7 @@ function animate(time) {
       ctx.restore();
     });
 
+    // Remove coins that have scrolled fully off
     while (activeCoins.length && activeCoins[0].y > canvas.height) {
       activeCoins.shift();
     }

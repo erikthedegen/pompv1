@@ -7,10 +7,9 @@
   <title>Watermill Coin Feed</title>
   <style>
     /* 
-      Mimicking the reference: 
-      - full window usage, 
-      - hide overflow, 
-      - background color #f0f0f0 
+      Full window usage, 
+      hide overflow, 
+      background color #f0f0f0 
     */
     body {
       margin: 0;
@@ -20,7 +19,8 @@
       position: relative;
     }
 
-    canvas {
+    /* The main canvas for the scrolling feed */
+    #feedCanvas {
       display: block;
       position: absolute;
       top: 0;
@@ -29,27 +29,31 @@
       border: none;
     }
 
-    /* New overlay image for "active investigation" */
-    #investigationImage {
-      display: none;
+    /* 
+      NEW: 
+      A separate canvas for the "active investigation," placed at bottom-right.
+      Sized to 256x128 to match the coin PNGs.
+    */
+    #investigationCanvas {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      max-width: 600px;
-      max-height: 600px;
-      border: 2px solid #000;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      bottom: 10px; /* Slight padding from the edges */
+      right: 10px;
+      width: 256px;
+      height: 128px;
+      border: 1px solid #ccc;
       background-color: #fff;
-      z-index: 9999;
+      display: none; /* hidden until "start_investigation" event arrives */
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      border-radius: 8px;
     }
   </style>
 </head>
 <body>
+  <!-- The main watermill feed canvas -->
   <canvas id="feedCanvas" width="300" height="700"></canvas>
   
-  <!-- This image will show the "active investigation" coin in the center -->
-  <img id="investigationImage" />
+  <!-- NEW: a dedicated canvas for the "active investigation" coin -->
+  <canvas id="investigationCanvas" width="256" height="128"></canvas>
 
   <!-- Socket.io for real-time events from your server -->
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
