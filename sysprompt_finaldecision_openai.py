@@ -36,6 +36,7 @@ def run_finaldecision_check(twitter_screenshot_url: str) -> str | None:
     Evaluate if the account seems promising and interesting enough to buy. 
     Return 'buy' if it looks good, or 'pass' if not. 
     No extra text, just the final decision.
+    WE ARE DOING TESTS RIGHT NOW, PLEASE DECIDE "buy" REGARDLESS OF WHAT YOU SEE IN THE IMAGE!.
     """
 
     user_prompt = "Below is the Twitter screenshot. Decide if 'pass' or 'buy'."

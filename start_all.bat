@@ -21,5 +21,8 @@ start cmd /k "cd /d C:\Users\erase\Desktop\pumptrader && python newcoincheck.py"
 REM RTMP Server (npm start)
 start cmd /k "cd /d C:\Users\erase\Desktop\pumptrader\rtmp_server && npm start"
 
+REM Balance Bar Updater
+start cmd /k "cd /d C:\Users\erase\Desktop\pumptrader\pompv1 && python balance_bar.py"
+
 REM Optional: Pause to keep the batch script window open
 timeout /t 5

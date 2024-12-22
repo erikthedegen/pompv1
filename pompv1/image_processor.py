@@ -259,8 +259,6 @@ def upload_screenshot():
         with open(temp_path, "wb") as f:
             f.write(raw_bytes)
 
-        # Typically you'd call your existing cloudflare_uploader.py here,
-        # or the new coin or lens uploaders, depending on your preference.
         from cloudflare_uploader import upload_to_cloudflare
         uploaded_url = upload_to_cloudflare(temp_path, filename)
         if not uploaded_url:
@@ -306,10 +304,6 @@ def upload_screenshot_lens():
 # --------------- Additional endpoints for the "active investigation" overlay ---------------
 @app.route('/start_investigation', methods=['POST'])
 def start_investigation():
-    """
-    Called by newcoincheck.py to show a coin's image 
-    in the center of the watermill feed UI while we do lens/twitter checks.
-    """
     data = request.get_json()
     image_url = data.get("image_url")
     if not image_url:
@@ -318,15 +312,23 @@ def start_investigation():
     socketio.emit("start_investigation", {"image_url": image_url})
     return jsonify({"status": "ok"}), 200
 
+
 @app.route('/stop_investigation', methods=['POST'])
 def stop_investigation():
-    """
-    Called by newcoincheck.py to hide the "active investigation" image
-    once the coin is either disqualified or we proceed to "buy."
-    """
     socketio.emit("stop_investigation", {})
     return jsonify({"status": "ok"}), 200
 # ------------------------------------------------------------------------------------
+
+
+@app.route('/update_balance_bar', methods=['POST'])
+def update_balance_bar():
+    """
+    Receives netbalance from balance_bar.py and emits a socket event to the front-end.
+    """
+    data = request.get_json()
+    netbalance = data.get('netbalance', 0.0)
+    socketio.emit("update_balance_bar", {"netbalance": netbalance})
+    return jsonify({"status": "ok"}), 200
 
 
 def run_processor():

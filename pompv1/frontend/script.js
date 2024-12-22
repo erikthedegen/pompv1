@@ -126,7 +126,7 @@ function drawInvestigation() {
   invCtx.clearRect(0, 0, investigationCanvas.width, investigationCanvas.height);
 
   if (investigationImage) {
-    // Draw the coin image at its natural size without scaling
+    // Draw the coin image at its natural size
     invCtx.drawImage(investigationImage, 0, 0, 256, 128);
   }
 
@@ -233,7 +233,6 @@ requestAnimationFrame(drawInvestigation);
 
 /**
  * Called when we want a "PASS" overlay on the investigation canvas.
- * If you have a separate event for "buy," you could handle it similarly.
  */
 function createPassOverlay() {
   overlayType = "pass";
@@ -241,28 +240,12 @@ function createPassOverlay() {
   overlayAnimating = false;
   // Overlay will fade in and then fade out after a delay
   setTimeout(() => {
-    // Start fade out after a short delay
     overlayAnimating = true;
-  }, 3000); // Adjust delay as needed
-}
-
-/**
- * If you implement a "buy" scenario with a separate event,
- * you can create a similar function:
- */
-function createBuyOverlay() {
-  overlayType = "buy";
-  overlayAlpha = 0;
-  overlayAnimating = false;
-  // Overlay will fade in and then fade out after a delay
-  setTimeout(() => {
-    // Start fade out after a short delay
-    overlayAnimating = true;
-  }, 3000); // Adjust delay as needed
+  }, 3000);
 }
 
 /****************************************************
- * Watermill Scrolling Logic (unchanged below)
+ * Watermill Scrolling Logic
  ****************************************************/
 const canvas = document.getElementById("feedCanvas");
 const ctx = canvas.getContext("2d");
@@ -454,3 +437,88 @@ function animate(time) {
 }
 
 requestAnimationFrame(animate);
+
+
+/****************************************************
+ * NEW: Balance Bar Logic
+ ****************************************************/
+const balanceBarCanvas = document.getElementById('balanceBarCanvas');
+const balanceCtx = balanceBarCanvas.getContext('2d');
+
+// We'll store the netBalance from the server here:
+let currentNetBalance = 0.0;
+
+// Listen for 'update_balance_bar' event from server
+socket.on("update_balance_bar", (data) => {
+  const { netbalance } = data;
+  currentNetBalance = parseFloat(netbalance) || 0.0;
+  drawBalanceBar();
+});
+
+function drawBalanceBar() {
+  // Clear the entire canvas
+  balanceCtx.clearRect(0, 0, balanceBarCanvas.width, balanceBarCanvas.height);
+
+  const w = balanceBarCanvas.width;
+  const h = balanceBarCanvas.height;
+
+  // Outer black rectangle is the canvas itself (with a CSS border).
+  // We'll define an "inner" bar area
+  const barWidth = w * 0.8; // 80% of width for the "shell"
+  const barHeight = 20;
+  const barX = (w - barWidth) / 2;
+  const barY = (h - barHeight) / 2;
+
+  // Draw a black shell for the bar
+  balanceCtx.strokeStyle = "black";
+  balanceCtx.lineWidth = 2;
+  balanceCtx.strokeRect(barX, barY, barWidth, barHeight);
+
+  // Now compute fill length
+  // 1 px = 1$ difference, and the center is barX for zero
+  // If netBalance>0 => fill to the right in green
+  // If netBalance<0 => fill to the left in red
+
+  let fillLength = currentNetBalance; 
+  // 1 px = $1, so if netBalance = 100 => fill 100 px to the right
+  // if netBalance = -40 => fill 40 px to the left
+  const maxFill = barWidth; // we won't clamp, but it can go beyond
+  const fillHeight = barHeight;
+
+  balanceCtx.save();
+
+  if (fillLength > 0) {
+    // Green fill to the right
+    balanceCtx.fillStyle = "green";
+    if (fillLength > maxFill) {
+      fillLength = maxFill; // you can clamp if you'd like
+    }
+    balanceCtx.fillRect(barX, barY, fillLength, fillHeight);
+  } else if (fillLength < 0) {
+    // Red fill to the left
+    balanceCtx.fillStyle = "red";
+    const absLen = Math.abs(fillLength);
+    let startX = barX; // left boundary of the bar
+    if (absLen > barWidth) {
+      fillLength = -barWidth; // clamp if you'd like
+    }
+    // We'll subtract from barX (the bar's left)
+    startX = barX - absLen;
+    balanceCtx.fillRect(startX, barY, absLen, fillHeight);
+  }
+
+  balanceCtx.restore();
+
+  // Draw text in black in the middle
+  balanceCtx.fillStyle = "black";
+  balanceCtx.font = "14px Arial";
+  let displayText = `Balance: ${currentNetBalance.toFixed(2)}$`;
+  // Alternatively show percentage if you prefer
+  // let displayText = currentNetBalance >= 0 
+  //   ? `Balance: +${currentNetBalance.toFixed(2)}$` 
+  //   : `Balance: ${currentNetBalance.toFixed(2)}$`;
+  const textMetrics = balanceCtx.measureText(displayText);
+  const textX = (w - textMetrics.width) / 2;
+  const textY = barY + barHeight - 5; // near inside the bar
+  balanceCtx.fillText(displayText, textX, textY);
+}

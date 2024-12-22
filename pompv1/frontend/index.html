@@ -30,7 +30,6 @@
     }
 
     /* 
-      NEW: 
       A separate canvas for the "active investigation," placed at bottom-right.
       Sized to 256x128 to match the coin PNGs.
     */
@@ -46,6 +45,21 @@
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
       border-radius: 8px;
     }
+
+    /* 
+      NEW: The "balance bar" canvas at bottom center.
+      We'll place it above the feedCanvas so it is visible.
+    */
+    #balanceBarCanvas {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%); /* center horizontally */
+      width: 400px;
+      height: 100px; /* a bit bigger so the bar can expand left if negative */
+      border: 2px solid black;
+      background-color: #fafafa;
+    }
   </style>
 </head>
 <body>
@@ -54,6 +68,9 @@
   
   <!-- NEW: a dedicated canvas for the "active investigation" coin -->
   <canvas id="investigationCanvas" width="256" height="128"></canvas>
+
+  <!-- NEW: a separate canvas for the net balance bar -->
+  <canvas id="balanceBarCanvas" width="400" height="100"></canvas>
 
   <!-- Socket.io for real-time events from your server -->
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>

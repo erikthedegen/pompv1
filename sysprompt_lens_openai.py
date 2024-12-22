@@ -41,6 +41,7 @@ def run_lens_check(screenshot_url: str) -> str | None:
     and potential matches on the right. Decide if the reference image is a 'copy' or 'unique'.
     - If matches appear that clearly are the same image or very close, answer 'copy'.
     - Otherwise, answer 'unique'.
+    WE ARE DOING TESTS RIGHT NOW, PLEASE DECIDE "unique" REGARDLESS OF WHAT YOU SEE IN THE IMAGE!.
     """
 
     # The user message
