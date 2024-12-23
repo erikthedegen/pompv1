@@ -1,31 +1,51 @@
-// File: rtmp_server/server.js
-
 import NodeMediaServer from 'node-media-server';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Configuration for Node Media Server
-const config = {
-  logType: 2, // 1: access log, 2: error log, 4: debug log
+/**
+ * First NodeMediaServer instance (existing):
+ */
+const config1 = {
+  logType: 2, // error logs only
   rtmp: {
-    port: 1935, // Default RTMP port
+    port: 1935,         // Existing RTMP port
     chunk_size: 6000,
     gop_cache: true,
     ping: 60,
     ping_timeout: 30,
   },
   http: {
-    port: 8000, // HTTP server port for status and HLS
+    port: 8000,         // Existing status/HLS port
     allow_origin: '*',
   },
 };
 
-// Initialize Node Media Server
-const nms = new NodeMediaServer(config);
+const nms1 = new NodeMediaServer(config1);
+nms1.run();
+console.log('NodeMediaServer #1 is running on rtmp://localhost:1935/live/streamkey');
+console.log('HTTP server #1 is running on http://localhost:8000');
 
-// Start the server
-nms.run();
 
-console.log('NodeMediaServer is running on rtmp://localhost:1935/live');
-console.log('HTTP server is running on http://localhost:8000');
+/**
+ * Second NodeMediaServer instance (NEW):
+ */
+const config2 = {
+  logType: 2,
+  rtmp: {
+    port: 1936,         // New RTMP port
+    chunk_size: 6000,
+    gop_cache: true,
+    ping: 60,
+    ping_timeout: 30,
+  },
+  http: {
+    port: 8001,         // Another HTTP port for status/HLS
+    allow_origin: '*',
+  },
+};
+
+const nms2 = new NodeMediaServer(config2);
+nms2.run();
+console.log('NodeMediaServer #2 is running on rtmp://localhost:1936/live/watermill');
+console.log('HTTP server #2 is running on http://localhost:8001');
