@@ -1,8 +1,8 @@
-"""
-This script calls GPT with an image URL (the "lens screenshot") 
-and obtains a structured output of either {"answer": "copy"} or {"answer": "unique"}.
+# File: /pompv1/sysprompt_lens_openai.py
 
-We rely on the 'structured outputs' feature to ensure well-formed JSON.
+"""
+Calls GPT with a Google Lens screenshot URL,
+asking for "copy" or "unique" in valid JSON using JSON mode.
 """
 
 import os
@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from typing import Literal
 from pydantic import BaseModel, Field
 from openai import OpenAI
+import json
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -19,82 +20,81 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise EnvironmentError("Missing OPENAI_API_KEY in .env")
 
-# Create the OpenAI client
 client = OpenAI(api_key=openai_api_key)
 
-# Our Pydantic model for structured output
-class LensCheckOutput(BaseModel):
+class LensDecisionOutput(BaseModel):
     answer: Literal["copy", "unique"] = Field(
-        ...,
-        description="Either 'copy' if the reference image is not unique, or 'unique' if it is unique."
+        ..., description="Either 'copy' if the image is a copy, or 'unique' if it is original."
     )
 
 def run_lens_check(screenshot_url: str) -> str | None:
     """
-    Calls GPT with a system prompt about google lens uniqueness check.
+    Calls GPT with a system prompt about Google Lens uniqueness check in JSON mode.
     Returns "copy" or "unique", or None if there's a refusal or an error.
     """
-    # The developer instructions (higher priority than user).
-    developer_prompt = """
-    You are an expert in meme coins with extensive knowledge of the current market trends.
-    You're given a screenshot from Google Lens that shows a reference image on the left 
-    and potential matches on the right. Decide if the reference image is a 'copy' or 'unique'.
-    - If matches appear that clearly are the same image or very close, answer 'copy'.
-    - Otherwise, answer 'unique'.
-    WE ARE DOING TESTS RIGHT NOW, PLEASE DECIDE "unique" REGARDLESS OF WHAT YOU SEE IN THE IMAGE!.
-    """
+    system_prompt = """
+You are an expert in analysing google lens image reverse search results.
+You will be provided with a screenshot from a Google Lens search query, on the left side of the screenshot will be the input image, usually the icon from a memecoin, on the right side will be the search results, appearing as a grid/list of images, the results on the top usually indicat the closest found matches, but your job is solely to spot if an "exact match" has been found, that would usually be the first result in the grid, which also has blue marked text right below it, saying "see exact matches", if you spot that, and the other results also look extremly similar to the search queried image on the left, your output should be "copy", if there has been no exact matches, your output should be "unique".
+Respond strictly in valid JSON format like this:
 
-    # The user message
-    user_prompt = "Below is the lens screenshot. Decide if 'copy' or 'unique'."
+{
+  "answer": "copy" | "unique"
+}
 
-    # We do a "chat.completions.parse" with structured output
+If you encounter any refusal or cannot determine the decision, output:
+
+{
+  "answer": "copy"
+}
+
+Ensure that the output is valid JSON. The word "JSON" appears in these instructions to enforce JSON mode.
+"""
+
+    user_prompt = f"Here is the Google Lens screenshot URL: {screenshot_url}.\nPlease provide your decision in the specified JSON format."
+
     try:
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o-mini",  # or another model that supports structured outputs
+        logging.info(f"Sending lens check request to OpenAI for screenshot: {screenshot_url}")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Replace with your specific model if different
             messages=[
-                {
-                    "role": "developer",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": developer_prompt.strip()
-                        }
-                    ]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": user_prompt
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": screenshot_url,
-                                "detail": "low"  
-                                # or "high" if you want the model to do more detailed analysis 
-                            }
-                        }
-                    ]
-                }
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": user_prompt.strip()}
             ],
-            response_format=LensCheckOutput,  # The Pydantic model
+            temperature=0.0,
+            response_format={"type": "json_object"}
         )
 
-        # Extract the first choice
-        msg = completion.choices[0].message
+        choice = response.choices[0]
 
-        # If the model refused for safety reasons, we get msg.refusal
-        if msg.refusal:
-            logging.warning(f"Model refusal in run_lens_check: {msg.refusal}")
-            return None
+        # Handle model refusal
+        if hasattr(choice.message, "refusal") and choice.message.refusal:
+            logging.warning("Model refused the request. Interpreting as 'copy'.")
+            return "copy"
 
-        # Otherwise, parse the structured data
-        parsed: LensCheckOutput = msg.parsed
-        logging.info(f"LensCheckOutput => {parsed.dict()}")
-        return parsed.answer
+        # Handle incomplete generation due to length or content filtering
+        if choice.finish_reason in ["length", "content_filter"]:
+            logging.warning(f"finish_reason={choice.finish_reason}. Interpreting as 'copy'.")
+            return "copy"
 
+        # Extract and parse JSON content
+        raw_json = choice.message.content
+        if not raw_json:
+            logging.warning("No content returned. Interpreting as 'copy'.")
+            return "copy"
+
+        parsed = json.loads(raw_json)
+        answer = parsed.get("answer")
+
+        if answer not in ["copy", "unique"]:
+            logging.warning(f"Invalid or missing 'answer' in JSON. Interpreting as 'copy'.")
+            return "copy"
+
+        logging.info(f"LensCheckOutput => {parsed}")
+        return answer
+
+    except json.JSONDecodeError as jde:
+        logging.error(f"JSON decoding error: {jde}. Interpreting as 'copy'.")
+        return "copy"
     except Exception as e:
         logging.error(f"Error in run_lens_check: {e}", exc_info=True)
-        return None
+        return "copy"

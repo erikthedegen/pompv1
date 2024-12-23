@@ -15,9 +15,9 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 
 from openai_decider import get_decision
-
-# Import your separate coin uploader (dedicated for "yes" coins)
 from cloudflare_uploader_coins import upload_yes_coin_png
+# NEW importer
+from cloudflare_uploader_watermill import upload_watermill_coin
 
 load_dotenv()
 
@@ -55,15 +55,12 @@ BOX_HEIGHT = IMG_HEIGHT // GRID_ROWS
 
 current_bundle_id = None
 
-
 def process_next_bundle():
     """
     Continuously checks the 'bundle_queue' in Redis for the next item (bundle).
     When found, downloads the bundle's main image, splits it into 8 coins, 
-    updates the front-end, runs the OpenAI decision, then for each "yes" coin:
-    - inserts into 'goodcoins'
-    - uploads the PNG to Cloudflare
-    - updates 'goodcoins.cloudflareimage' with the final public URL
+    (NEW) uploads each to CF for watermill usage, updates DB in 'coins.watermillcoins',
+    updates the front-end, runs the OpenAI decision for yes/no, etc.
     """
     global current_bundle_id
     item = r.lpop("bundle_queue")
@@ -103,11 +100,7 @@ def process_next_bundle():
         logging.error(f"Error processing image for bundle {bundle_id}: {e}", exc_info=True)
         return
 
-    # 2) Where do we store the 8 coin images?
-    bundle_dir = os.path.join(os.path.dirname(__file__), "frontend", "coins", bundle_id)
-    os.makedirs(bundle_dir, exist_ok=True)
-
-    # 3) Split into 8 coins
+    # 2) Split into 8 coins
     coins_data = []
     for i in range(8):
         row = i // GRID_COLS
@@ -116,64 +109,68 @@ def process_next_bundle():
         y = row * BOX_HEIGHT
         try:
             coin_img = img.crop((x, y, x + BOX_WIDTH, y + BOX_HEIGHT))
-            coin_file_name = f"{i+1:02d}.png"
-            coin_path = os.path.join(bundle_dir, coin_file_name)
-            coin_img.save(coin_path, format='PNG')
-            logging.info(f"Cropped and saved coin {i+1} to {coin_path}")
+            coin_file_name = f"{bundle_id}_{i+1:02d}.png"
+            coin_img.save(coin_file_name, format='PNG')  # temp local
+
+            # NEW: upload each piece to CF
+            cf_url = upload_watermill_coin(coin_file_name, coin_file_name)
+            if not cf_url:
+                cf_url = ""  # fallback empty
+
+            # Save that CF URL to DB's "coins.watermillcoins" for the matching coin
+            # We need coin_id => "01", "02", ...
+            coin_id_str = f"{i+1:02d}"
+            try:
+                supabase.table('coins') \
+                    .update({"watermillcoins": cf_url}) \
+                    .eq("bundle_id", bundle_id) \
+                    .eq("coin_id", coin_id_str) \
+                    .execute()
+            except Exception as e:
+                logging.error(f"Failed to update DB watermillcoins for coin_id={coin_id_str}: {e}", exc_info=True)
+
             coins_data.append({
-                "id": f"{i+1:02d}",
-                "url": f"/static/coins/{bundle_id}/{coin_file_name}"
+                "id": coin_id_str,
+                "url": cf_url  # we emit this to the front-end
             })
+            # Clean up local file if desired
+            if os.path.isfile(coin_file_name):
+                os.remove(coin_file_name)
+
+            logging.info(f"Cropped, uploaded coin {i+1} => {cf_url}")
         except Exception as e:
             logging.error(f"Error cropping coin {i+1} from bundle {bundle_id}: {e}", exc_info=True)
             return
 
-    # 4) Send them to front-end
+    # 3) Send them to front-end
     try:
         socketio.emit("clear_canvas", {"bundle_id": bundle_id})
         for c in coins_data:
-            socketio.emit("add_coin", {"bundle_id": bundle_id, "id": c["id"], "url": c["url"]})
+            socketio.emit("add_coin", {
+                "bundle_id": bundle_id,
+                "id": c["id"],
+                "url": c["url"]  # CF link used by watermill feed
+            })
     except Exception as e:
         logging.error(f"Error sending coins to frontend: {e}", exc_info=True)
         return
 
-    # 5) Fetch coin metadata from Supabase
-    try:
-        res = supabase.table('coins').select("*").eq('bundle_id', bundle_id).execute()
-        coin_rows = res.data
-        coin_rows.sort(key=lambda x: x['coin_id'])
-        coin_info_list = []
-        for c in coin_rows:
-            coin_info_list.append({
-                "id": c['coin_id'],
-                "name": c.get('metadata_name', ''),
-                "symbol": c.get('metadata_symbol', ''),
-                "description": c.get('metadata_description', '')
-            })
-        logging.info("Fetched coin metadata from Supabase.")
-    except Exception as e:
-        logging.error(f"Error fetching coin metadata for bundle {bundle_id}: {e}", exc_info=True)
-        return
+    # 4) The user originally had logic to fetch coin metadata from Supabase,
+    #    but we no longer pass it to GPT. We only pass the big grid image_url now.
+    #    So we skip that part. We still might fetch coin_rows if we want local info.
 
-    # 6) OpenAI decisions (yes/no)
-    logging.info("Requesting decisions from OpenAI...")
-    decisions = get_decision(bundle_id, image_url, coin_info_list)
+    # 5) OpenAI decisions (yes/no) using the big grid image
+    logging.info("Requesting decisions from OpenAI (image-based).")
+    decisions = get_decision(bundle_id, image_url)
     logging.info(f"OpenAI decisions: {decisions}")
-    if decisions is None:
-        logging.error(f"No valid OpenAI decisions for bundle {bundle_id}.")
+    if not decisions:
+        logging.error(f"No valid decisions for bundle {bundle_id}.")
         return
 
-    # 7) For each "yes" coin => insert row in 'goodcoins', 
-    #    upload its PNG to Cloudflare, update 'cloudflareimage'.
+    # 6) For each "yes" coin => insert row in 'goodcoins', upload coin PNG to Cloudflare (existing code).
     yes_coins = [d for d in decisions if d['decision'] == 'yes']
     for yc in yes_coins:
         coin_id = yc['id']
-        coin_filename = f"{coin_id}.png"
-        local_path = os.path.join(bundle_dir, coin_filename)
-        if not os.path.isfile(local_path):
-            logging.error(f"Coin image not found: {local_path}")
-            continue
-
         # find coin_uuid in the 'coins' table
         try:
             coin_info_resp = supabase.table('coins') \
@@ -188,15 +185,26 @@ def process_next_bundle():
                 gc_insert_resp = supabase.table('goodcoins').insert({
                     "coin_uuid": coin_uuid
                 }).execute()
-
                 if not gc_insert_resp.data:
                     logging.error(f"Failed to insert new row in goodcoins for coin_uuid={coin_uuid}.")
                     continue
 
                 goodcoin_id = gc_insert_resp.data[0]['id']
 
-                # Use the new coin-uploader function for "yes" coins
-                uploaded_url = upload_yes_coin_png(local_path, f"{goodcoin_id}.png")
+                # We want to re-upload this coin as "yes"? 
+                # Typically we do that with `upload_yes_coin_png`.
+                # But we need the local file for that, or just re-crop:
+                # We'll re-crop quickly or fetch from watermill link, your choice.
+                # For simplicity, let's do the re-crop approach again:
+                x = ((int(coin_id) - 1) % GRID_COLS) * BOX_WIDTH
+                y = ((int(coin_id) - 1) // GRID_COLS) * BOX_HEIGHT
+                sub_img = img.crop((x, y, x + BOX_WIDTH, y + BOX_HEIGHT))
+                yes_file_name = f"yes_{bundle_id}_{coin_id}.png"
+                sub_img.save(yes_file_name, format='PNG')
+                uploaded_url = upload_yes_coin_png(yes_file_name, f"{goodcoin_id}.png")
+                if os.path.isfile(yes_file_name):
+                    os.remove(yes_file_name)
+
                 if uploaded_url:
                     supabase.table('goodcoins') \
                         .update({"cloudflareimage": uploaded_url}) \
@@ -210,7 +218,7 @@ def process_next_bundle():
         except Exception as e:
             logging.error(f"Error handling 'yes' coin for coin_id={coin_id}: {e}", exc_info=True)
 
-    # 8) Emit overlay marks & fade out
+    # 7) Emit overlay marks & fade out
     try:
         socketio.emit("overlay_marks", decisions)
         time.sleep(1)
@@ -221,7 +229,6 @@ def process_next_bundle():
     current_bundle_id = None
     logging.info(f"Completed processing for bundle {bundle_id}")
 
-
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
@@ -231,7 +238,7 @@ def index():
 def disqualify_coin():
     """
     Endpoint called by newcoincheck to inform the front-end 
-    that a coin has been disqualified (will display big red text).
+    that a coin has been disqualified.
     """
     data = request.get_json()
     coin_id = data.get("coin_id")
@@ -244,8 +251,7 @@ def disqualify_coin():
 @app.route('/upload_screenshot', methods=['POST'])
 def upload_screenshot():
     """
-    Endpoint used to upload a screenshot to the main bucket
-    (non-lens route). 
+    Endpoint used to upload a screenshot to the main bucket.
     """
     data = request.get_json()
     if not data or 'base64' not in data or 'filename' not in data:
@@ -274,8 +280,7 @@ def upload_screenshot():
 @app.route('/upload_screenshot_lens', methods=['POST'])
 def upload_screenshot_lens():
     """
-    Endpoint used by Puppeteer to upload lens screenshots. 
-    That calls your cloudflare_uploader_lens.py with the lens domain.
+    For lens screenshots, calls cloudflare_uploader_lens.py
     """
     data = request.get_json()
     if not data or 'base64' not in data or 'filename' not in data:
@@ -301,7 +306,7 @@ def upload_screenshot_lens():
         return {"success": False, "message": str(e)}, 500
 
 
-# --------------- Additional endpoints for the "active investigation" overlay ---------------
+# Additional endpoints for "active investigation" overlay
 @app.route('/start_investigation', methods=['POST'])
 def start_investigation():
     data = request.get_json()
@@ -312,13 +317,10 @@ def start_investigation():
     socketio.emit("start_investigation", {"image_url": image_url})
     return jsonify({"status": "ok"}), 200
 
-
 @app.route('/stop_investigation', methods=['POST'])
 def stop_investigation():
     socketio.emit("stop_investigation", {})
     return jsonify({"status": "ok"}), 200
-# ------------------------------------------------------------------------------------
-
 
 @app.route('/update_balance_bar', methods=['POST'])
 def update_balance_bar():
@@ -330,7 +332,6 @@ def update_balance_bar():
     socketio.emit("update_balance_bar", {"netbalance": netbalance})
     return jsonify({"status": "ok"}), 200
 
-
 def run_processor():
     """
     Background loop that continuously processes the next bundle in the queue.
@@ -338,7 +339,6 @@ def run_processor():
     while True:
         process_next_bundle()
         time.sleep(5)
-
 
 if __name__ == "__main__":
     import threading

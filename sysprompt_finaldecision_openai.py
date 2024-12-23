@@ -1,6 +1,8 @@
+# File: /pompv1/sysprompt_finaldecision_openai.py
+
 """
-Calls GPT with a Twitter screenshot URL, 
-asking for "pass" or "buy" in structured JSON format.
+Calls GPT with a Twitter screenshot URL,
+asking for "pass" or "buy" in valid JSON using JSON mode.
 """
 
 import os
@@ -9,6 +11,7 @@ from dotenv import load_dotenv
 from typing import Literal
 from pydantic import BaseModel, Field
 from openai import OpenAI
+import json
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -21,69 +24,83 @@ client = OpenAI(api_key=openai_api_key)
 
 class FinalDecisionOutput(BaseModel):
     answer: Literal["pass", "buy"] = Field(
-        ...,
-        description="Either 'pass' if not interesting, or 'buy' if definitely should buy."
+        ..., description="Either 'pass' to not buy, or 'buy' to proceed with purchasing."
     )
 
-def run_finaldecision_check(twitter_screenshot_url: str) -> str | None:
+def run_finaldecision_check(screenshot_url: str) -> str | None:
     """
-    Calls GPT with a system prompt about a Twitter screenshot.
-    Expects a structured output: 'pass' or 'buy'.
-    Returns "pass" or "buy", or None if there's a refusal or error.
+    Calls GPT with a Twitter screenshot URL to decide "pass" or "buy".
+    
+    Args:
+        screenshot_url (str): URL of the Twitter screenshot.
+    
+    Returns:
+        str | None: "pass" or "buy", or None if there's a refusal or an error.
     """
-    developer_prompt = """
-    You are an expert in meme coins on Twitter. You're given a screenshot from a Twitter account page. 
-    Evaluate if the account seems promising and interesting enough to buy. 
-    Return 'buy' if it looks good, or 'pass' if not. 
-    No extra text, just the final decision.
-    WE ARE DOING TESTS RIGHT NOW, PLEASE DECIDE "buy" REGARDLESS OF WHAT YOU SEE IN THE IMAGE!.
-    """
+    system_prompt = """
+You are an expert in meme coins on Twitter.
+You are provided with a screenshot of a Twitter account page related to a memecoin.
+Decide whether to "pass" or "buy" based on the credibility and activity displayed in the screenshot.
+Respond strictly in valid JSON format as follows:
 
-    user_prompt = "Below is the Twitter screenshot. Decide if 'pass' or 'buy'."
+{
+  "answer": "pass" | "buy"
+}
+
+If you encounter any refusal or cannot determine the decision, output:
+
+{
+  "answer": "pass"
+}
+
+Ensure that the output is valid JSON. The word "JSON" appears in these instructions to enforce JSON mode.
+"""
+
+    user_prompt = f"Here is the Twitter screenshot URL: {screenshot_url}.\nPlease provide your decision in the specified JSON format."
 
     try:
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o-mini",
+        logging.info(f"Sending final decision request to OpenAI for screenshot: {screenshot_url}")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Replace with your specific model if different
             messages=[
-                {
-                    "role": "developer",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": developer_prompt.strip()
-                        }
-                    ]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": user_prompt
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": twitter_screenshot_url,
-                                "detail": "low"
-                            }
-                        }
-                    ]
-                }
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": user_prompt.strip()}
             ],
-            response_format=FinalDecisionOutput,
+            temperature=0.0,
+            response_format={"type": "json_object"}
         )
 
-        msg = completion.choices[0].message
+        choice = response.choices[0]
 
-        if msg.refusal:
-            logging.warning(f"Model refusal in run_finaldecision_check: {msg.refusal}")
-            return None
+        # Handle model refusal
+        if hasattr(choice.message, "refusal") and choice.message.refusal:
+            logging.warning("Model refused the request. Interpreting as 'pass'.")
+            return "pass"
 
-        parsed: FinalDecisionOutput = msg.parsed
-        logging.info(f"FinalDecisionOutput => {parsed.dict()}")
-        return parsed.answer
+        # Handle incomplete generation due to length or content filtering
+        if choice.finish_reason in ["length", "content_filter"]:
+            logging.warning(f"finish_reason={choice.finish_reason}. Interpreting as 'pass'.")
+            return "pass"
 
+        # Extract and parse JSON content
+        raw_json = choice.message.content
+        if not raw_json:
+            logging.warning("No content returned. Interpreting as 'pass'.")
+            return "pass"
+
+        parsed = json.loads(raw_json)
+        answer = parsed.get("answer")
+
+        if answer not in ["pass", "buy"]:
+            logging.warning(f"Invalid or missing 'answer' in JSON. Interpreting as 'pass'.")
+            return "pass"
+
+        logging.info(f"FinalDecisionOutput => {parsed}")
+        return answer
+
+    except json.JSONDecodeError as jde:
+        logging.error(f"JSON decoding error: {jde}. Interpreting as 'pass'.")
+        return "pass"
     except Exception as e:
         logging.error(f"Error in run_finaldecision_check: {e}", exc_info=True)
-        return None
+        return "pass"

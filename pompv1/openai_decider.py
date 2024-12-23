@@ -1,14 +1,17 @@
+# File: /pompv1/openai_decider.py
+
 import os
 import logging
 from typing import List
-from pydantic import BaseModel, Field
-from typing_extensions import Literal
 from dotenv import load_dotenv
 from openai import OpenAI
+
+import json
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
+# Initialize OpenAI client with API key from environment variables
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     logging.error("OPENAI_API_KEY not set.")
@@ -16,88 +19,130 @@ if not openai_api_key:
 
 client = OpenAI(api_key=openai_api_key)
 
-class CoinDecision(BaseModel):
-    id: str = Field(..., description="Coin ID")
-    decision: Literal["yes", "no"] = Field(..., description="Decision")
-
-class DecisionList(BaseModel):
-    decisions: List[CoinDecision]
-
-def get_decision(bundle_id: str, image_url: str, coin_info_list: List[dict]) -> List[dict]:
-    system_prompt = """
-    You are an expert in memecoins with extensive knowledge of the current market trends and project fundamentals.
-    You are provided with an image containing a grid of 8 memecoins, each identified by a unique ID visible in the grid.
-    Along with the image, you receive metadata for each coin, including its name, symbol, and description.
-
-    Your task is to analyze each memecoin in the image and decide whether it is a good investment ("yes") or not ("no").
-    Base your decision on the provided metadata and any insights you can infer from the image.
-
-    Output a structured list of decisions where each entry contains the coin's ID and your decision ("yes" or "no").
-
-    Ensure that the output strictly adheres to the following JSON schema:
-    {
-        "decisions": [
-            {
-                "id": "string",
-                "decision": "yes" | "no"
-            },
-            ...
-        ]
-    }
-
-    Do not include any additional text or commentary in your response.
+def get_decision(bundle_id: str, image_url: str) -> List[dict]:
+    """
+    Requests OpenAI to provide "yes" or "no" decisions for 8 coins in a bundle based on the provided image URL.
+    
+    Args:
+        bundle_id (str): Unique identifier for the bundle.
+        image_url (str): URL of the bundle grid image containing 8 memecoins.
+    
+    Returns:
+        List[dict]: A list of 8 dictionaries each containing 'id' and 'decision'.
+                    Example:
+                    [
+                        {"id": "01", "decision": "yes"},
+                        {"id": "02", "decision": "no"},
+                        ...
+                        {"id": "08", "decision": "yes"}
+                    ]
     """
 
-    user_message = "Coins data:\n"
-    for coin in coin_info_list:
-        user_message += (
-            f"ID: {coin['id']}\n"
-            f"Name: {coin.get('name', 'N/A')}\n"
-            f"Symbol: {coin.get('symbol', 'N/A')}\n"
-            f"Description: {coin.get('description', 'N/A')}\n\n"
-        )
+    system_prompt = """
+You are a pumpfun memecoin prefilter machine.
+You will be provided with a single image, displaying a grid of 8 memecoins, each in its own rectangle. 
+Each memecoin in the grid has a unique ID from "01" to "08" displayed within its rectangle, aswell as a name, description, and most importantly, a profilepicture aka an icon.
+
+Your task is to analyze each memecoin in the image and decide whether it is a coin worty to look into, by answering with either ("yes") or ("no") for each unique id.
+Its important that you only let memecoins through that you think are extremly hilarious/ridicules and or very intruiging, almost every coin you will encounter is bad, so dont be fooled!, each of your "yes" decisions will cost me money, so be alert and sparse, your Goal is to find the truly truly good ones!
+Please respond strictly in valid JSON format as seen in this example:
+
+{
+  "decisions": [
+    {"id": "01", "decision": "yes"},
+    {"id": "02", "decision": "no"},
+    {"id": "03", "decision": "yes"},
+    {"id": "04", "decision": "no"},
+    {"id": "05", "decision": "yes"},
+    {"id": "06", "decision": "no"},
+    {"id": "07", "decision": "yes"},
+    {"id": "08", "decision": "no"}
+  ]
+}
+
+Ensure that:
+1. All 8 coins are included with IDs "01" through "08".
+2. The decisions are either "yes" or "no" based on your evaluation.
+3. The output is valid JSON. The string "JSON" appears in these instructions to enforce JSON mode.
+
+If you encounter any refusal or cannot determine the decision for a specific coin, mark that coin's decision as "no" without affecting the decisions of other coins.
+"""
+
+    user_prompt = f"Here is the grid image URL: {image_url}.\nPlease output 8 decisions in valid JSON."
 
     try:
-        logging.info(f"Sending decision request for bundle {bundle_id} to OpenAI...")
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o-mini",
+        logging.info(f"Sending decision request for bundle {bundle_id} to OpenAI (JSON mode)...")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Replace with your specific model if different
             messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_message.strip()},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
-                }
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": user_prompt.strip()}
             ],
-            temperature=0.0,
-            response_format=DecisionList
+            temperature=0.3,
+            response_format={"type": "json_object"}
         )
 
-        msg = completion.choices[0].message
-        if msg.refusal:
-            logging.error(f"OpenAI model refused to answer: {msg.refusal}")
-            return None
+        choice = response.choices[0]
 
-        decisions = msg.parsed.decisions
-        logging.info(f"Received decisions from OpenAI: {decisions}")
+        # Handle model refusal
+        if hasattr(choice.message, "refusal") and choice.message.refusal:
+            logging.warning("Model refused the request. Interpreting all coins as 'no'.")
+            return [{"id": f"{i+1:02d}", "decision": "no"} for i in range(8)]
 
-        if len(decisions) != 8:
-            logging.error(f"Expected 8 decisions, but received {len(decisions)}.")
-            return None
+        # Handle incomplete generation due to length or content filtering
+        if choice.finish_reason in ["length", "content_filter"]:
+            logging.warning(f"finish_reason={choice.finish_reason}, interpreting all coins as 'no'.")
+            return [{"id": f"{i+1:02d}", "decision": "no"} for i in range(8)]
 
-        valid_ids = {f"{i+1:02d}" for i in range(8)}
-        for decision in decisions:
-            if decision.id not in valid_ids:
-                logging.error(f"Invalid coin ID in response: {decision.id}")
-                return None
+        # Extract and parse JSON content
+        raw_json = choice.message.content
+        if not raw_json:
+            logging.warning("No content returned. Interpreting all coins as 'no'.")
+            return [{"id": f"{i+1:02d}", "decision": "no"} for i in range(8)]
 
-        formatted_decisions = [{"id": d.id, "decision": d.decision} for d in decisions]
-        logging.info(f"Formatted decisions: {formatted_decisions}")
+        parsed = json.loads(raw_json)
+        decisions_list = parsed.get("decisions", [])
 
-        return formatted_decisions
+        # Initialize final decisions with "no" for all coins
+        final_decisions = {f"{i+1:02d}": "no" for i in range(8)}
 
+        for coin_dec in decisions_list:
+            coin_id_raw = coin_dec.get("id")
+            decision = coin_dec.get("decision")
+
+            # Convert '1'..'8' to '01'..'08'
+            try:
+                i = int(coin_id_raw)  # e.g., "1" or "01" -> 1
+                if 1 <= i <= 8:
+                    coin_id = f"{i:02d}"  # Ensure zero-padding
+                else:
+                    logging.warning(f"coin_id={coin_id_raw} out of range (1-8). Ignoring.")
+                    continue
+            except (TypeError, ValueError):
+                # Non-integer ID; ignore and leave as "no"
+                logging.warning(f"coin_id={coin_id_raw} is not a valid integer. Ignoring.")
+                continue
+
+            # Validate decision
+            if decision in ["yes", "no"]:
+                final_decisions[coin_id] = decision
+                logging.info(f"Set decision for coin_id={coin_id}: {decision}")
+            else:
+                logging.warning(f"Invalid decision '{decision}' for coin_id={coin_id_raw}. Keeping as 'no'.")
+
+        # Prepare the final sorted list of decisions
+        results = [
+            {"id": cid, "decision": final_decisions[cid]}
+            for cid in sorted(final_decisions.keys())
+        ]
+
+        logging.info(f"Final decisions for bundle {bundle_id}: {results}")
+        return results
+
+    except json.JSONDecodeError as jde:
+        logging.error(f"JSON decoding error: {jde}. Interpreting all coins as 'no'.")
+        return [{"id": f"{i+1:02d}", "decision": "no"} for i in range(8)]
     except Exception as e:
-        logging.error(f"Error while communicating with OpenAI: {e}", exc_info=True)
-        return None
+        logging.error(f"Error while communicating with OpenAI or parsing JSON: {e}", exc_info=True)
+        return [{"id": f"{i+1:02d}", "decision": "no"} for i in range(8)]
+
