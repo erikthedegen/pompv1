@@ -1,4 +1,4 @@
-# File: newcoincheck.py
+# File: /newcoincheck.py
 
 import time
 import logging
@@ -25,10 +25,8 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 currently_processing_coin = False
 
-
 def main_loop():
     global currently_processing_coin
-
     while True:
         if not currently_processing_coin:
             try:
@@ -46,7 +44,6 @@ def main_loop():
 
         time.sleep(5)
 
-
 def find_unprocessed_coin():
     """
     Finds the oldest row in 'goodcoins' where processed=false
@@ -63,7 +60,6 @@ def find_unprocessed_coin():
     except Exception as e:
         logging.error(f"Error finding unprocessed coin: {e}", exc_info=True)
     return None
-
 
 def process_goodcoin(goodcoin_row):
     goodcoin_uuid = goodcoin_row['id']
@@ -104,7 +100,7 @@ def process_goodcoin(goodcoin_row):
     # 3) run GPT check for "copy"|"unique"
     lens_judgment = call_sysprompt_lens_openai(lens_screenshot_url)
     if not lens_judgment:
-        lens_judgment = "copy"  # default if something broke
+        lens_judgment = "copy"
 
     if lens_judgment == "copy":
         logging.info(f"Coin {text_coin_id} => 'copy' => disqualified.")
@@ -144,6 +140,8 @@ def process_goodcoin(goodcoin_row):
             logging.info(f"Coin {text_coin_id} => final buy => calling buy script.")
             do_buy_coin(coin_data)
             mark_goodcoin_processed(goodcoin_uuid, "buy")
+            # Emit "bought_coin" to front end
+            emit_bought_event(text_coin_id)
             stop_investigation()
             return
         else:
@@ -158,7 +156,6 @@ def process_goodcoin(goodcoin_row):
         emit_disqualified_event(text_coin_id)
         stop_investigation()
 
-
 def get_coin_data_by_uuid(coin_uuid):
     try:
         resp = supabase.table('coins').select("*").eq('id', coin_uuid).execute()
@@ -167,7 +164,6 @@ def get_coin_data_by_uuid(coin_uuid):
     except Exception as e:
         logging.error(f"Error fetching coin data for coin_uuid={coin_uuid}: {e}", exc_info=True)
     return None
-
 
 def do_google_lens_screenshot(image_url):
     try:
@@ -181,7 +177,6 @@ def do_google_lens_screenshot(image_url):
         logging.error(f"Error in do_google_lens_screenshot: {e}", exc_info=True)
     return None
 
-
 def do_twitter_screenshot(twitter_url):
     try:
         payload = {"twitterUrl": twitter_url}
@@ -194,7 +189,6 @@ def do_twitter_screenshot(twitter_url):
         logging.error(f"Error in do_twitter_screenshot: {e}", exc_info=True)
     return None
 
-
 def call_sysprompt_lens_openai(screenshot_url):
     try:
         from sysprompt_lens_openai import run_lens_check
@@ -202,7 +196,6 @@ def call_sysprompt_lens_openai(screenshot_url):
     except Exception as e:
         logging.error(f"Error calling sysprompt_lens_openai: {e}", exc_info=True)
     return None
-
 
 def call_sysprompt_finaldecision_openai(screenshot_url):
     try:
@@ -212,7 +205,6 @@ def call_sysprompt_finaldecision_openai(screenshot_url):
         logging.error(f"Error calling sysprompt_finaldecision_openai: {e}", exc_info=True)
     return None
 
-
 def do_buy_coin(coin_data):
     import subprocess
     mint = coin_data.get("mint", "")
@@ -220,7 +212,6 @@ def do_buy_coin(coin_data):
         subprocess.run(["python", "buy_placeholder.py", mint], check=True)
     except Exception as e:
         logging.error(f"Error calling buy_placeholder script: {e}", exc_info=True)
-
 
 def mark_goodcoin_processed(goodcoin_id, quality_value):
     try:
@@ -230,7 +221,6 @@ def mark_goodcoin_processed(goodcoin_id, quality_value):
         }).eq("id", goodcoin_id).execute()
     except Exception as e:
         logging.error(f"Error updating goodcoin {goodcoin_id}: {e}", exc_info=True)
-
 
 def emit_disqualified_event(coin_text_id):
     if not coin_text_id:
@@ -242,6 +232,16 @@ def emit_disqualified_event(coin_text_id):
     except Exception as e:
         logging.error(f"Failed to emit disqualified event for coin_id={coin_text_id}: {e}")
 
+# NEW helper: emit a "bought_coin" event => triggers "BOUGHT" overlay
+def emit_bought_event(coin_text_id):
+    if not coin_text_id:
+        coin_text_id = "???"
+    try:
+        requests.post(f"{WATERMILL_FLASK_URL}/bought_coin",
+                      json={"coin_id": coin_text_id},
+                      timeout=10)
+    except Exception as e:
+        logging.error(f"Failed to emit bought event for coin_id={coin_text_id}: {e}")
 
 def start_investigation(image_url):
     try:
@@ -251,7 +251,6 @@ def start_investigation(image_url):
     except Exception as e:
         logging.error(f"Failed to start_investigation with {image_url}: {e}")
 
-
 def stop_investigation():
     try:
         requests.post(f"{WATERMILL_FLASK_URL}/stop_investigation",
@@ -259,7 +258,6 @@ def stop_investigation():
                       timeout=10)
     except Exception as e:
         logging.error(f"Failed to stop_investigation: {e}")
-
 
 if __name__ == "__main__":
     main_loop()

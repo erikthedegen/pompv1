@@ -31,24 +31,29 @@
 
     /* 
       A separate canvas for the "active investigation," placed at bottom-right.
-      Sized to 256x128 to match the coin PNGs.
+      Now increased to 384x256.
     */
     #investigationCanvas {
       position: absolute;
-      bottom: 10px; /* Slight padding from the edges */
-      right: 10px;
-      width: 256px;
-      height: 128px;
+      bottom: -30px;
+      right: 2px;
+
+     /* Increase its size (unchanged from prior) */
+      width: 384px;
+      height: 256px;
+
+     /* Golden background color */
+      background-color: gold; /* e.g. "gold" or "#FFD700" */
+
       border: 1px solid #ccc;
-      background-color: #fff;
-      display: none; /* hidden until "start_investigation" event arrives */
+      display: none;
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
       border-radius: 8px;
     }
 
+
     /* 
-      NEW: The "balance bar" canvas at bottom center.
-      We'll place it above the feedCanvas so it is visible.
+      The "balance bar" canvas at bottom center
     */
     #balanceBarCanvas {
       position: absolute;
@@ -66,10 +71,10 @@
   <!-- The main watermill feed canvas -->
   <canvas id="feedCanvas" width="300" height="700"></canvas>
   
-  <!-- NEW: a dedicated canvas for the "active investigation" coin -->
-  <canvas id="investigationCanvas" width="256" height="128"></canvas>
+  <!-- A dedicated canvas for the "active investigation" coin -->
+  <canvas id="investigationCanvas" width="384" height="256"></canvas>
 
-  <!-- NEW: a separate canvas for the net balance bar -->
+  <!-- A separate canvas for the net balance bar -->
   <canvas id="balanceBarCanvas" width="400" height="100"></canvas>
 
   <!-- Socket.io for real-time events from your server -->

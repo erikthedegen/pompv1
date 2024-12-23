@@ -61,29 +61,100 @@ socket.on("fade_out", () => {
   console.log("Received fade_out (unused in watermill approach).");
 });
 
-// NEW listener for disqualified (or "pass") coins
+// Listener for disqualified (or "pass") coins
 socket.on("disqualified_coin", (data) => {
   console.log("Received disqualified_coin:", data);
-
-  // Interpret "disqualified_coin" as a "PASS" scenario
   createPassOverlay(); 
-  // For "buy" scenarios, you can emit a different event and handle similarly
+});
+
+// Listener for bought coins => show "BOUGHT" overlay
+socket.on("bought_coin", (data) => {
+  console.log("Received bought_coin:", data);
+  createBuyOverlay();
 });
 
 /****************************************************
- * NEW: "active_investigation" logic - separate canvas
+ * "active_investigation" logic - separate canvas
  ****************************************************/
+
+/**
+ * NOTE: For the canvas background to be gold, ensure that in your CSS
+ * (e.g. in /pompv1/frontend/index.html), you have something like:
+ * 
+ *  #investigationCanvas {
+ *    background-color: gold; 
+ *    ...
+ *  }
+ * 
+ * That makes the backing color gold instead of white.
+ */
 
 // Grab the investigation canvas and context
 const investigationCanvas = document.getElementById('investigationCanvas');
 const invCtx = investigationCanvas.getContext('2d');
 
-// We'll keep an in-memory image that we draw into this canvas.
+// We'll keep an in-memory image that we draw (and scale) into this canvas
 let investigationImage = null;
 // We'll track if a fade-out is in progress for the overlay
 let overlayAlpha = 0;
 let overlayAnimating = false;
 let overlayType = null; // "pass" or "buy"
+
+
+/**
+ * A short "shake" animation for the investigation canvas.
+ * Shakes for about 300ms, updating every 15ms.
+ */
+function doCanvasShake() {
+  const duration = 300;     // total duration of the shake in ms
+  const shakeInterval = 15; // ms between each "shake" step
+  const startTime = Date.now();
+
+  const intervalId = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    if (elapsed > duration) {
+      clearInterval(intervalId);
+      // Stop shaking; reset transform
+      investigationCanvas.style.transform = "translate(0, 0)";
+      return;
+    }
+    // Random offset in [-5..5]
+    const offsetX = Math.floor(Math.random() * 11) - 5; 
+    const offsetY = Math.floor(Math.random() * 11) - 5;
+    investigationCanvas.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+  }, shakeInterval);
+}
+
+
+// Called when "pass" is decided; triggers pass overlay + shake
+function createPassOverlay() {
+  overlayType = "pass";
+  overlayAlpha = 0;
+  overlayAnimating = false;
+
+  // Start the shake immediately
+  doCanvasShake();
+
+  // Then fade out after a few seconds
+  setTimeout(() => {
+    overlayAnimating = true;
+  }, 3000);
+}
+
+// Called when "buy" is decided; triggers buy overlay + shake
+function createBuyOverlay() {
+  overlayType = "buy";
+  overlayAlpha = 0;
+  overlayAnimating = false;
+
+  // Start the shake immediately
+  doCanvasShake();
+
+  // Then fade out after a few seconds
+  setTimeout(() => {
+    overlayAnimating = true;
+  }, 3000);
+}
 
 socket.on("start_investigation", (data) => {
   console.log("start_investigation =>", data);
@@ -99,7 +170,7 @@ socket.on("start_investigation", (data) => {
       overlayAlpha = 0;
       overlayAnimating = false;
       overlayType = null;
-      // Draw the coin
+      // Begin draw loop
       drawInvestigation();
     };
   }
@@ -107,7 +178,7 @@ socket.on("start_investigation", (data) => {
 
 socket.on("stop_investigation", () => {
   console.log("stop_investigation");
-  // Fade out the overlay and then hide the canvas
+  // Fade out the overlay if we have one, then hide the canvas
   if (overlayType) {
     overlayAnimating = true;
   } else {
@@ -119,25 +190,49 @@ socket.on("stop_investigation", () => {
 });
 
 /**
- * Render loop for the investigation canvas.
+ * Main render loop for the investigation canvas.
+ * Now includes logic to scale image while preserving aspect ratio.
  */
 function drawInvestigation() {
   // Clear
   invCtx.clearRect(0, 0, investigationCanvas.width, investigationCanvas.height);
 
   if (investigationImage) {
-    // Draw the coin image at its natural size
-    invCtx.drawImage(investigationImage, 0, 0, 256, 128);
-  }
+    const imgW = investigationImage.width;
+    const imgH = investigationImage.height;
+    const canvasW = investigationCanvas.width;
+    const canvasH = investigationCanvas.height;
 
-  // If there's a pass/buy overlay in progress, draw it
-  if (overlayType && overlayAlpha < 1) {
-    overlayAlpha += 0.02; // speed of fade in
-    if (overlayAlpha > 1) {
-      overlayAlpha = 1;
+    // Determine aspect ratios
+    const imgAspect = imgW / imgH;
+    const canvasAspect = canvasW / canvasH;
+
+    let drawWidth, drawHeight, drawX, drawY;
+
+    if (imgAspect > canvasAspect) {
+      // Image is wider relative to the canvas => match canvas width
+      drawWidth = canvasW;
+      drawHeight = canvasW / imgAspect;
+      drawX = 0;
+      drawY = (canvasH - drawHeight) / 2;
+    } else {
+      // Image is taller => match canvas height
+      drawHeight = canvasH;
+      drawWidth = canvasH * imgAspect;
+      drawY = 0;
+      drawX = (canvasW - drawWidth) / 2;
     }
+
+    invCtx.drawImage(investigationImage, drawX, drawY, drawWidth, drawHeight);
   }
 
+  // Fade in the overlay if needed
+  if (overlayType && overlayAlpha < 1) {
+    overlayAlpha += 0.02; // speed of fade-in
+    if (overlayAlpha > 1) overlayAlpha = 1;
+  }
+
+  // Draw overlay if we have one
   if (overlayType) {
     invCtx.save();
     invCtx.globalAlpha = overlayAlpha;
@@ -147,12 +242,12 @@ function drawInvestigation() {
       invCtx.fillStyle = "rgba(0,0,0,0.7)";
       invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
       // "PASS" in red
-      invCtx.font = "bold 24px sans-serif";
+      invCtx.font = "bold 28px sans-serif";
       invCtx.fillStyle = "red";
       const text = "PASS";
       const textWidth = invCtx.measureText(text).width;
       const textX = (investigationCanvas.width - textWidth) / 2;
-      const textY = (investigationCanvas.height / 2) + 8; 
+      const textY = (investigationCanvas.height / 2) + 10; 
       invCtx.fillText(text, textX, textY);
 
     } else if (overlayType === "buy") {
@@ -160,12 +255,12 @@ function drawInvestigation() {
       invCtx.fillStyle = "rgba(0,128,0,0.8)";
       invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
       // "BOUGHT" in white
-      invCtx.font = "bold 24px sans-serif";
+      invCtx.font = "bold 28px sans-serif";
       invCtx.fillStyle = "white";
       const text = "BOUGHT";
       const textWidth = invCtx.measureText(text).width;
       const textX = (investigationCanvas.width - textWidth) / 2;
-      const textY = (investigationCanvas.height / 2) + 8; 
+      const textY = (investigationCanvas.height / 2) + 10; 
       invCtx.fillText(text, textX, textY);
     }
 
@@ -175,49 +270,63 @@ function drawInvestigation() {
   // If overlay is animating (fading out)
   if (overlayAnimating) {
     if (overlayAlpha > 0) {
-      overlayAlpha -= 0.02; // speed of fade out
-      if (overlayAlpha < 0) {
-        overlayAlpha = 0;
-      }
-      // Redraw with updated alpha
+      overlayAlpha -= 0.02; // speed of fade-out
+      if (overlayAlpha < 0) overlayAlpha = 0;
+
+      // Re-draw with updated alpha
       if (investigationImage) {
-        invCtx.drawImage(investigationImage, 0, 0, 256, 128);
+        const imgW = investigationImage.width;
+        const imgH = investigationImage.height;
+        const canvasW = investigationCanvas.width;
+        const canvasH = investigationCanvas.height;
+        const imgAspect = imgW / imgH;
+        const canvasAspect = canvasW / canvasH;
+
+        let drawWidth, drawHeight, drawX, drawY;
+        if (imgAspect > canvasAspect) {
+          drawWidth = canvasW;
+          drawHeight = canvasW / imgAspect;
+          drawX = 0;
+          drawY = (canvasH - drawHeight) / 2;
+        } else {
+          drawHeight = canvasH;
+          drawWidth = canvasH * imgAspect;
+          drawY = 0;
+          drawX = (canvasW - drawWidth) / 2;
+        }
+        invCtx.clearRect(0, 0, canvasW, canvasH);
+        invCtx.drawImage(investigationImage, drawX, drawY, drawWidth, drawHeight);
       }
+
+      // Overlay with partial alpha
       if (overlayAlpha > 0) {
         invCtx.save();
         invCtx.globalAlpha = overlayAlpha;
-
         if (overlayType === "pass") {
-          // Dim black overlay
           invCtx.fillStyle = "rgba(0,0,0,0.7)";
           invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
-          // "PASS" in red
-          invCtx.font = "bold 24px sans-serif";
+          invCtx.font = "bold 28px sans-serif";
           invCtx.fillStyle = "red";
           const text = "PASS";
           const textWidth = invCtx.measureText(text).width;
           const textX = (investigationCanvas.width - textWidth) / 2;
-          const textY = (investigationCanvas.height / 2) + 8; 
+          const textY = (investigationCanvas.height / 2) + 10; 
           invCtx.fillText(text, textX, textY);
-
         } else if (overlayType === "buy") {
-          // Green overlay
           invCtx.fillStyle = "rgba(0,128,0,0.8)";
           invCtx.fillRect(0, 0, investigationCanvas.width, investigationCanvas.height);
-          // "BOUGHT" in white
-          invCtx.font = "bold 24px sans-serif";
+          invCtx.font = "bold 28px sans-serif";
           invCtx.fillStyle = "white";
           const text = "BOUGHT";
           const textWidth = invCtx.measureText(text).width;
           const textX = (investigationCanvas.width - textWidth) / 2;
-          const textY = (investigationCanvas.height / 2) + 8; 
+          const textY = (investigationCanvas.height / 2) + 10; 
           invCtx.fillText(text, textX, textY);
         }
-
         invCtx.restore();
       }
     } else {
-      // Overlay fully faded out, hide canvas
+      // Overlay fully faded out, hide the canvas
       overlayAnimating = false;
       overlayType = null;
       investigationCanvas.style.display = 'none';
@@ -229,20 +338,6 @@ function drawInvestigation() {
   requestAnimationFrame(drawInvestigation);
 }
 
-requestAnimationFrame(drawInvestigation);
-
-/**
- * Called when we want a "PASS" overlay on the investigation canvas.
- */
-function createPassOverlay() {
-  overlayType = "pass";
-  overlayAlpha = 0;
-  overlayAnimating = false;
-  // Overlay will fade in and then fade out after a delay
-  setTimeout(() => {
-    overlayAnimating = true;
-  }, 3000);
-}
 
 /****************************************************
  * Watermill Scrolling Logic
@@ -440,7 +535,7 @@ requestAnimationFrame(animate);
 
 
 /****************************************************
- * NEW: Balance Bar Logic
+ * Balance Bar Logic
  ****************************************************/
 const balanceBarCanvas = document.getElementById('balanceBarCanvas');
 const balanceCtx = balanceBarCanvas.getContext('2d');
@@ -462,9 +557,8 @@ function drawBalanceBar() {
   const w = balanceBarCanvas.width;
   const h = balanceBarCanvas.height;
 
-  // Outer black rectangle is the canvas itself (with a CSS border).
-  // We'll define an "inner" bar area
-  const barWidth = w * 0.8; // 80% of width for the "shell"
+  // Outer black rectangle is the canvas itself
+  const barWidth = w * 0.8; 
   const barHeight = 20;
   const barX = (w - barWidth) / 2;
   const barY = (h - barHeight) / 2;
@@ -475,14 +569,8 @@ function drawBalanceBar() {
   balanceCtx.strokeRect(barX, barY, barWidth, barHeight);
 
   // Now compute fill length
-  // 1 px = 1$ difference, and the center is barX for zero
-  // If netBalance>0 => fill to the right in green
-  // If netBalance<0 => fill to the left in red
-
   let fillLength = currentNetBalance; 
-  // 1 px = $1, so if netBalance = 100 => fill 100 px to the right
-  // if netBalance = -40 => fill 40 px to the left
-  const maxFill = barWidth; // we won't clamp, but it can go beyond
+  const maxFill = barWidth; 
   const fillHeight = barHeight;
 
   balanceCtx.save();
@@ -491,19 +579,17 @@ function drawBalanceBar() {
     // Green fill to the right
     balanceCtx.fillStyle = "green";
     if (fillLength > maxFill) {
-      fillLength = maxFill; // you can clamp if you'd like
+      fillLength = maxFill; 
     }
     balanceCtx.fillRect(barX, barY, fillLength, fillHeight);
   } else if (fillLength < 0) {
     // Red fill to the left
     balanceCtx.fillStyle = "red";
     const absLen = Math.abs(fillLength);
-    let startX = barX; // left boundary of the bar
     if (absLen > barWidth) {
-      fillLength = -barWidth; // clamp if you'd like
+      fillLength = -barWidth; 
     }
-    // We'll subtract from barX (the bar's left)
-    startX = barX - absLen;
+    const startX = barX - absLen;
     balanceCtx.fillRect(startX, barY, absLen, fillHeight);
   }
 
@@ -513,12 +599,8 @@ function drawBalanceBar() {
   balanceCtx.fillStyle = "black";
   balanceCtx.font = "14px Arial";
   let displayText = `Balance: ${currentNetBalance.toFixed(2)}$`;
-  // Alternatively show percentage if you prefer
-  // let displayText = currentNetBalance >= 0 
-  //   ? `Balance: +${currentNetBalance.toFixed(2)}$` 
-  //   : `Balance: ${currentNetBalance.toFixed(2)}$`;
   const textMetrics = balanceCtx.measureText(displayText);
   const textX = (w - textMetrics.width) / 2;
-  const textY = barY + barHeight - 5; // near inside the bar
+  const textY = barY + barHeight - 5;
   balanceCtx.fillText(displayText, textX, textY);
 }

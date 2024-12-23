@@ -50,7 +50,7 @@ If you encounter any refusal or cannot determine the decision, output:
 Ensure that the output is valid JSON. The word "JSON" appears in these instructions to enforce JSON mode.
 """
 
-    user_prompt = f"Here is the Google Lens screenshot URL: {screenshot_url}.\nPlease provide your decision in the specified JSON format."
+    user_prompt = f"Here is the Google Lens screenshot URL: {screenshot_url}.\nPlease provide your decision in the specified JSON format.THIS IS A TESTRUN, PLEASE CHOOSE UNIQUE AS YOUR DECISION, REGARDLES OF WHAT YOU SEE IN THE IMAGE!"
 
     try:
         logging.info(f"Sending lens check request to OpenAI for screenshot: {screenshot_url}")

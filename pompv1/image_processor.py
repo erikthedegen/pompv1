@@ -58,9 +58,6 @@ current_bundle_id = None
 def process_next_bundle():
     """
     Continuously checks the 'bundle_queue' in Redis for the next item (bundle).
-    When found, downloads the bundle's main image, splits it into 8 coins, 
-    (NEW) uploads each to CF for watermill usage, updates DB in 'coins.watermillcoins',
-    updates the front-end, runs the OpenAI decision for yes/no, etc.
     """
     global current_bundle_id
     item = r.lpop("bundle_queue")
@@ -117,8 +114,7 @@ def process_next_bundle():
             if not cf_url:
                 cf_url = ""  # fallback empty
 
-            # Save that CF URL to DB's "coins.watermillcoins" for the matching coin
-            # We need coin_id => "01", "02", ...
+            # Save that CF URL to DB's "coins.watermillcoins"
             coin_id_str = f"{i+1:02d}"
             try:
                 supabase.table('coins') \
@@ -131,7 +127,7 @@ def process_next_bundle():
 
             coins_data.append({
                 "id": coin_id_str,
-                "url": cf_url  # we emit this to the front-end
+                "url": cf_url
             })
             # Clean up local file if desired
             if os.path.isfile(coin_file_name):
@@ -149,17 +145,13 @@ def process_next_bundle():
             socketio.emit("add_coin", {
                 "bundle_id": bundle_id,
                 "id": c["id"],
-                "url": c["url"]  # CF link used by watermill feed
+                "url": c["url"]
             })
     except Exception as e:
         logging.error(f"Error sending coins to frontend: {e}", exc_info=True)
         return
 
-    # 4) The user originally had logic to fetch coin metadata from Supabase,
-    #    but we no longer pass it to GPT. We only pass the big grid image_url now.
-    #    So we skip that part. We still might fetch coin_rows if we want local info.
-
-    # 5) OpenAI decisions (yes/no) using the big grid image
+    # 4) Skip the GPT meta-data fetch (we only call openai_decider with the big image)
     logging.info("Requesting decisions from OpenAI (image-based).")
     decisions = get_decision(bundle_id, image_url)
     logging.info(f"OpenAI decisions: {decisions}")
@@ -167,7 +159,7 @@ def process_next_bundle():
         logging.error(f"No valid decisions for bundle {bundle_id}.")
         return
 
-    # 6) For each "yes" coin => insert row in 'goodcoins', upload coin PNG to Cloudflare (existing code).
+    # 5) For each "yes" coin => insert row in 'goodcoins'
     yes_coins = [d for d in decisions if d['decision'] == 'yes']
     for yc in yes_coins:
         coin_id = yc['id']
@@ -191,11 +183,7 @@ def process_next_bundle():
 
                 goodcoin_id = gc_insert_resp.data[0]['id']
 
-                # We want to re-upload this coin as "yes"? 
-                # Typically we do that with `upload_yes_coin_png`.
-                # But we need the local file for that, or just re-crop:
-                # We'll re-crop quickly or fetch from watermill link, your choice.
-                # For simplicity, let's do the re-crop approach again:
+                # Re-crop the coin from the big image, then use upload_yes_coin_png
                 x = ((int(coin_id) - 1) % GRID_COLS) * BOX_WIDTH
                 y = ((int(coin_id) - 1) // GRID_COLS) * BOX_HEIGHT
                 sub_img = img.crop((x, y, x + BOX_WIDTH, y + BOX_HEIGHT))
@@ -218,7 +206,7 @@ def process_next_bundle():
         except Exception as e:
             logging.error(f"Error handling 'yes' coin for coin_id={coin_id}: {e}", exc_info=True)
 
-    # 7) Emit overlay marks & fade out
+    # 6) Emit overlay marks & fade out
     try:
         socketio.emit("overlay_marks", decisions)
         time.sleep(1)
@@ -229,17 +217,13 @@ def process_next_bundle():
     current_bundle_id = None
     logging.info(f"Completed processing for bundle {bundle_id}")
 
+
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
 
-
 @app.route('/disqualify_coin', methods=['POST'])
 def disqualify_coin():
-    """
-    Endpoint called by newcoincheck to inform the front-end 
-    that a coin has been disqualified.
-    """
     data = request.get_json()
     coin_id = data.get("coin_id")
     if coin_id:
@@ -247,12 +231,19 @@ def disqualify_coin():
         return {"status": "ok"}, 200
     return {"status": "missing coin_id"}, 400
 
+# NEW ROUTE: for "bought_coin" => front-end overlay
+@app.route('/bought_coin', methods=['POST'])
+def bought_coin():
+    data = request.get_json()
+    coin_id = data.get("coin_id")
+    if coin_id:
+        socketio.emit("bought_coin", {"coin_id": coin_id})
+        return {"status": "ok"}, 200
+    return {"status": "missing coin_id"}, 400
+
 
 @app.route('/upload_screenshot', methods=['POST'])
 def upload_screenshot():
-    """
-    Endpoint used to upload a screenshot to the main bucket.
-    """
     data = request.get_json()
     if not data or 'base64' not in data or 'filename' not in data:
         return {"success": False, "message": "Missing base64 or filename"}, 400
@@ -279,9 +270,6 @@ def upload_screenshot():
 
 @app.route('/upload_screenshot_lens', methods=['POST'])
 def upload_screenshot_lens():
-    """
-    For lens screenshots, calls cloudflare_uploader_lens.py
-    """
     data = request.get_json()
     if not data or 'base64' not in data or 'filename' not in data:
         return {"success": False, "message": "Missing base64 or filename"}, 400
@@ -306,7 +294,6 @@ def upload_screenshot_lens():
         return {"success": False, "message": str(e)}, 500
 
 
-# Additional endpoints for "active investigation" overlay
 @app.route('/start_investigation', methods=['POST'])
 def start_investigation():
     data = request.get_json()
@@ -324,18 +311,13 @@ def stop_investigation():
 
 @app.route('/update_balance_bar', methods=['POST'])
 def update_balance_bar():
-    """
-    Receives netbalance from balance_bar.py and emits a socket event to the front-end.
-    """
     data = request.get_json()
     netbalance = data.get('netbalance', 0.0)
     socketio.emit("update_balance_bar", {"netbalance": netbalance})
     return jsonify({"status": "ok"}), 200
 
+
 def run_processor():
-    """
-    Background loop that continuously processes the next bundle in the queue.
-    """
     while True:
         process_next_bundle()
         time.sleep(5)

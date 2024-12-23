@@ -68,7 +68,7 @@ Ensure that:
 If you encounter any refusal or cannot determine the decision for a specific coin, mark that coin's decision as "no" without affecting the decisions of other coins.
 """
 
-    user_prompt = f"Here is the grid image URL: {image_url}.\nPlease output 8 decisions in valid JSON."
+    user_prompt = f"Here is the grid image URL: {image_url}.\nPlease output 8 decisions in valid JSON.THIS IS A TESTRUN, PLEASE CHOOSE AT LEAST ONE AS YES AS YOUR DECISION, REGARDLES OF WHAT YOU SEE IN THE IMAGE!"
 
     try:
         logging.info(f"Sending decision request for bundle {bundle_id} to OpenAI (JSON mode)...")
