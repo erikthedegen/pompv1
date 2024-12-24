@@ -1,5 +1,3 @@
-// File: /pompv1/frontend/script.js
-
 /****************************************************
  * Socket.io + Bundles/Decisions (Watermill Feed)
  ****************************************************/

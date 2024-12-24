@@ -45,6 +45,67 @@
       border: 2px solid black;
       background-color: #fafafa;
     }
+    /* New Styles for Rocks Wallet Box */
+    #rocksWalletBox {
+      position: absolute;
+      bottom: 130px; /* Positioned just above the balanceBarCanvas */
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #2e2e3d;
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    #rocksWalletBox:hover {
+      background-color: #3e3e4d;
+    }
+
+    #rocksWalletBox span {
+      margin-right: 10px;
+      font-size: 14px;
+      word-break: break-all; /* Ensures long text wraps */
+    }
+
+    #copyIcon {
+      width: 20px;
+      height: 20px;
+      fill: #ffffff;
+      transition: fill 0.3s;
+    }
+
+    #copyIcon:hover {
+      fill: #00aced;
+    }
+
+    /* Tooltip for copy action */
+    #copyTooltip {
+      visibility: hidden;
+      background-color: #555;
+      color: #fff;
+      text-align: center;
+      border-radius: 6px;
+      padding: 5px;
+      position: absolute;
+      z-index: 1;
+      bottom: 150%; /* Position above the box */
+      left: 50%;
+      transform: translateX(-50%);
+      opacity: 0;
+      transition: opacity 0.3s;
+      font-size: 12px;
+    }
+
+    #rocksWalletBox:hover #copyTooltip {
+      visibility: visible;
+      opacity: 1;
+    }
+
   </style>
 </head>
 <body>
@@ -53,7 +114,21 @@
   
   <!-- A dedicated canvas for the "active investigation" coin -->
   <canvas id="investigationCanvas" width="384" height="256"></canvas>
-
+  
+  <!-- Rocks Wallet Box -->
+  <div id="rocksWalletBox" title="Click to copy wallet address">
+    <span>rocks wallet: rGi7hWzTprSncvTnQ8ZeVkc2ScnXfgo5LWc3Njqu1bv</span>
+    <!-- SVG Copy Icon -->
+    <svg id="copyIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+      <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 
+        2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 
+        2-2V7c0-1.1-.9-2-2-2zm0 
+        16H8V7h11v14z"/>
+    </svg>
+    <!-- Tooltip -->
+    <div id="copyTooltip">Copied!</div>
+  </div>
+  
   <!-- A separate canvas for the net balance bar -->
   <canvas id="balanceBarCanvas" width="400" height="100"></canvas>
 
@@ -93,5 +168,30 @@
 
   <!-- D) Chat script (after supabase.js & your feed script) -->
   <script src="/static/livechat.js"></script>
+ 
+  <!-- Script to handle copy to clipboard functionality -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const rocksWalletBox = document.getElementById('rocksWalletBox');
+      const copyTooltip = document.getElementById('copyTooltip');
+      const walletAddress = 'rGi7hWzTprSncvTnQ8ZeVkc2ScnXfgo5LWc3Njqu1bv';
+
+      rocksWalletBox.addEventListener('click', function() {
+        // Copy the wallet address to clipboard
+        navigator.clipboard.writeText(walletAddress).then(function() {
+          // Show tooltip or provide feedback
+          copyTooltip.style.visibility = 'visible';
+          copyTooltip.style.opacity = '1';
+          setTimeout(function() {
+            copyTooltip.style.visibility = 'hidden';
+            copyTooltip.style.opacity = '0';
+          }, 2000);
+        }, function(err) {
+          console.error('Could not copy text: ', err);
+        });
+      });
+    });
+  </script>
+
 </body>
 </html>
