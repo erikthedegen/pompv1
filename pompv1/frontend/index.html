@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Watermill Coin Feed</title>
 
-  <!-- Your existing style for feedCanvas, investigationCanvas, balanceBarCanvas, etc. -->
+  <!-- Existing Styles -->
   <style>
     body {
       margin: 0;
@@ -14,6 +14,7 @@
       background-color: #1b1d28;
       overflow: hidden;
       position: relative;
+      font-family: Arial, sans-serif;
     }
     #feedCanvas {
       display: block;
@@ -44,11 +45,17 @@
       height: 100px;
       border: 2px solid black;
       background-color: #fafafa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      border-radius: 8px;
     }
-    /* New Styles for Rocks Wallet Box */
+
+    /* Styles for Rocks Wallet Box */
     #rocksWalletBox {
       position: absolute;
-      bottom: 130px; /* Positioned just above the balanceBarCanvas */
+      bottom: 130px; /* Adjust as needed */
       left: 50%;
       transform: translateX(-50%);
       background-color: #2e2e3d;
@@ -57,19 +64,28 @@
       border-radius: 8px;
       display: flex;
       align-items: center;
-      cursor: pointer;
-      transition: background-color 0.3s;
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-
-    #rocksWalletBox:hover {
-      background-color: #3e3e4d;
+      z-index: 1000;
     }
 
     #rocksWalletBox span {
       margin-right: 10px;
       font-size: 14px;
-      word-break: break-all; /* Ensures long text wraps */
+      word-break: break-all;
+    }
+
+    #copyButton {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      position: relative; /* To position the tooltip */
+    }
+
+    #copyButton:focus {
+      outline: none;
     }
 
     #copyIcon {
@@ -79,33 +95,40 @@
       transition: fill 0.3s;
     }
 
-    #copyIcon:hover {
+    #copyButton:hover #copyIcon {
       fill: #00aced;
     }
 
-    /* Tooltip for copy action */
+    /* Tooltip Styles */
     #copyTooltip {
       visibility: hidden;
       background-color: #555;
       color: #fff;
       text-align: center;
       border-radius: 6px;
-      padding: 5px;
+      padding: 5px 10px;
       position: absolute;
-      z-index: 1;
-      bottom: 150%; /* Position above the box */
+      z-index: 1001;
+      bottom: 150%;
       left: 50%;
       transform: translateX(-50%);
       opacity: 0;
       transition: opacity 0.3s;
       font-size: 12px;
+      pointer-events: none;
     }
 
-    #rocksWalletBox:hover #copyTooltip {
-      visibility: visible;
-      opacity: 1;
+    /* Arrow below the tooltip */
+    #copyTooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%; /* At the bottom of the tooltip */
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: #555 transparent transparent transparent;
     }
-
   </style>
 </head>
 <body>
@@ -114,19 +137,23 @@
   
   <!-- A dedicated canvas for the "active investigation" coin -->
   <canvas id="investigationCanvas" width="384" height="256"></canvas>
-  
+
   <!-- Rocks Wallet Box -->
-  <div id="rocksWalletBox" title="Click to copy wallet address">
-    <span>rocks wallet: rGi7hWzTprSncvTnQ8ZeVkc2ScnXfgo5LWc3Njqu1bv</span>
-    <!-- SVG Copy Icon -->
-    <svg id="copyIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-      <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 
-        2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 
-        2-2V7c0-1.1-.9-2-2-2zm0 
-        16H8V7h11v14z"/>
-    </svg>
-    <!-- Tooltip -->
-    <div id="copyTooltip">Copied!</div>
+  <div id="rocksWalletBox">
+    <span>Agent Rock's wallet: rGi7hWzTprSncvTnQ8ZeVkc2ScnXfgo5LWc3Njqu1bv</span>
+    <!-- Copy Button -->
+    <button id="copyButton" aria-label="Copy wallet address">
+      <!-- SVG Copy Icon -->
+      <svg id="copyIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M16 1H4c-1.1 0-2 .9-2 
+          2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 
+          2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 
+          2-2V7c0-1.1-.9-2-2-2zm0 
+          16H8V7h11v14z"/>
+      </svg>
+      <!-- Tooltip -->
+      <div id="copyTooltip">Copied!</div>
+    </button>
   </div>
   
   <!-- A separate canvas for the net balance bar -->
@@ -172,23 +199,65 @@
   <!-- Script to handle copy to clipboard functionality -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const rocksWalletBox = document.getElementById('rocksWalletBox');
+      const copyButton = document.getElementById('copyButton');
       const copyTooltip = document.getElementById('copyTooltip');
       const walletAddress = 'rGi7hWzTprSncvTnQ8ZeVkc2ScnXfgo5LWc3Njqu1bv';
 
-      rocksWalletBox.addEventListener('click', function() {
+      if (!copyButton) {
+        console.error('copyButton element not found!');
+        return;
+      }
+
+      copyButton.addEventListener('click', function(event) {
+        event.stopPropagation(); // Prevent triggering parent div's hover
+
         // Copy the wallet address to clipboard
-        navigator.clipboard.writeText(walletAddress).then(function() {
-          // Show tooltip or provide feedback
-          copyTooltip.style.visibility = 'visible';
-          copyTooltip.style.opacity = '1';
-          setTimeout(function() {
-            copyTooltip.style.visibility = 'hidden';
-            copyTooltip.style.opacity = '0';
-          }, 2000);
-        }, function(err) {
-          console.error('Could not copy text: ', err);
-        });
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(walletAddress).then(function() {
+            // Show tooltip
+            copyTooltip.style.visibility = 'visible';
+            copyTooltip.style.opacity = '1';
+            setTimeout(function() {
+              copyTooltip.style.visibility = 'hidden';
+              copyTooltip.style.opacity = '0';
+            }, 1000); // Display for 1 second
+          }, function(err) {
+            console.error('Could not copy text: ', err);
+          });
+        } else {
+          // Fallback for older browsers
+          const textArea = document.createElement("textarea");
+          textArea.value = walletAddress;
+          textArea.style.position = "fixed";
+          textArea.style.top = "0";
+          textArea.style.left = "0";
+          textArea.style.width = "2em";
+          textArea.style.height = "2em";
+          textArea.style.padding = "0";
+          textArea.style.border = "none";
+          textArea.style.outline = "none";
+          textArea.style.boxShadow = "none";
+          textArea.style.background = "transparent";
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+
+          try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+              copyTooltip.style.visibility = 'visible';
+              copyTooltip.style.opacity = '1';
+              setTimeout(function() {
+                copyTooltip.style.visibility = 'hidden';
+                copyTooltip.style.opacity = '0';
+              }, 1000); // Display for 1 second
+            }
+          } catch (err) {
+            console.error('Fallback: Oops, unable to copy', err);
+          }
+
+          document.body.removeChild(textArea);
+        }
       });
     });
   </script>
