@@ -1,0 +1,111 @@
+/* File: /pompv1/frontend/livechat.css */
+
+* {
+    box-sizing: border-box;
+  }
+  
+  #chatWrapper {
+    position: fixed;
+    top: 80px; /* adjust if it overlaps your feed */
+    right: 10px;
+    width: 300px;
+    height: 400px; /* fixed height => scroll */
+    border: 1px solid #000;
+    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+    z-index: 9999; /* ensure it's on top of the feed */
+  }
+  
+  #walletContainer {
+    padding: 1em;
+    border-bottom: 1px solid #ccc;
+    text-align: center;
+    background-color: #f9f9f9;
+  }
+  
+  #connectWalletBtn {
+    background-color: #9146ff;
+    border: none;
+    padding: 0.6em 1.2em;
+    color: white;
+    cursor: pointer;
+    font-size: 1em;
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+  }
+  #connectWalletBtn:hover {
+    background-color: #7d3ce8;
+  }
+  
+  #chatContainer {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5em;
+  }
+  
+  #messagesList {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+  }
+  #messagesList li {
+    margin-bottom: 0.5em;
+    line-height: 1.4em;
+    word-wrap: break-word;
+  }
+  
+  .username {
+    font-weight: bold;
+    margin-right: 0.5em;
+  }
+  
+  #slowModeWarning {
+    width: 100%;
+    color: red;
+    display: none; /* hidden by default */
+    font-size: 0.9em;
+    text-align: center;
+    border-top: 1px solid #ccc;
+    padding: 0.3em;
+    background-color: #fff5f5;
+  }
+  
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+  }
+  .shake {
+    animation: shake 0.3s;
+  }
+  
+  #inputContainer {
+    display: flex;
+    border-top: 1px solid #ccc;
+    padding: 0.5em;
+    background-color: #f9f9f9;
+  }
+  #chatInput {
+    flex: 1;
+    padding: 0.5em;
+    font-size: 1em;
+    border: 1px solid #ccc;
+    border-right: none;
+    outline: none;
+    border-radius: 4px 0 0 4px;
+  }
+  #sendBtn {
+    background-color: #6441a5;
+    border: none;
+    padding: 0.5em 1em;
+    color: white;
+    cursor: pointer;
+    font-size: 1em;
+    border-radius: 0 4px 4px 0;
+    transition: background-color 0.3s ease;
+  }
+  #sendBtn:hover {
+    background-color: #52348c;
+  }
+  

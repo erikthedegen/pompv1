@@ -217,7 +217,6 @@ def process_next_bundle():
     current_bundle_id = None
     logging.info(f"Completed processing for bundle {bundle_id}")
 
-
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
@@ -231,7 +230,6 @@ def disqualify_coin():
         return {"status": "ok"}, 200
     return {"status": "missing coin_id"}, 400
 
-# NEW ROUTE: for "bought_coin" => front-end overlay
 @app.route('/bought_coin', methods=['POST'])
 def bought_coin():
     data = request.get_json()
@@ -240,7 +238,6 @@ def bought_coin():
         socketio.emit("bought_coin", {"coin_id": coin_id})
         return {"status": "ok"}, 200
     return {"status": "missing coin_id"}, 400
-
 
 @app.route('/upload_screenshot', methods=['POST'])
 def upload_screenshot():
@@ -267,7 +264,6 @@ def upload_screenshot():
         logging.error(f"Error in /upload_screenshot: {e}", exc_info=True)
         return {"success": False, "message": str(e)}, 500
 
-
 @app.route('/upload_screenshot_lens', methods=['POST'])
 def upload_screenshot_lens():
     data = request.get_json()
@@ -293,7 +289,6 @@ def upload_screenshot_lens():
         logging.error(f"Error in /upload_screenshot_lens: {e}", exc_info=True)
         return {"success": False, "message": str(e)}, 500
 
-
 @app.route('/start_investigation', methods=['POST'])
 def start_investigation():
     data = request.get_json()
@@ -316,6 +311,19 @@ def update_balance_bar():
     socketio.emit("update_balance_bar", {"netbalance": netbalance})
     return jsonify({"status": "ok"}), 200
 
+# ------------------------------------------------------------
+# NEW ROUTE for the live chat supabase config
+# ------------------------------------------------------------
+@app.route('/livechat_config', methods=['GET'])
+def livechat_config():
+    """
+    Exposes your Supabase credentials (Anon Key) to the front-end chat.
+    Ensure your .env has SUPABASE_URL and SUPABASE_ANON_KEY set.
+    """
+    return {
+        "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
+        "SUPABASE_ANON_KEY": os.getenv("SUPABASE_ANON_KEY", "")
+    }
 
 def run_processor():
     while True:
